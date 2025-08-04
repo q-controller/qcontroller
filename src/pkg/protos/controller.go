@@ -83,7 +83,7 @@ func NewController(settings *settingsv1.ControllerConfig, fetcher pkgController.
 		return nil, mkdirErr
 	}
 
-	state, stateErr := db.NewDatabase(filepath.Join(settings.Root, "db", "qcontroller.sqlite"))
+	state, stateErr := db.NewDatabase(filepath.Join(settings.Root, "db", "qcontroller.db"))
 	if stateErr != nil {
 		return nil, stateErr
 	}
