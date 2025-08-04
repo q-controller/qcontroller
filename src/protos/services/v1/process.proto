@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package services.v1;
+
+import "settings/v1/settings.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/krjakbrjak/qcontroller/src/generated/services/v1;v1";
+
+message NetworkConfig {
+	string driver = 1;
+	string mac = 2;
+}
+
+message QemuConfig {
+	string id = 1;
+	string machine = 2;
+	string accelerator = 3;
+	NetworkConfig network = 4;
+	string qmp = 5;
+	string qga = 6;
+	string image = 7;
+	string userdata = 8;
+	settings.v1.VM hardware = 9;
+
+	string err_file_path = 10;
+	string out_file_path = 11;
+}
+
+message QemuServiceStartRequest {
+    QemuConfig config = 1;
+	optional int32 pid = 2;
+}
+
+message QemuServiceStartResponse {
+	int32 pid = 1;
+}
+
+message QemuServiceStopRequest {
+    string id = 1;
+	bool force = 2;
+}
+
+message QemuServiceStatusRequest {
+    string id = 1;
+}
+
+enum Level {
+	LEVEL_UNSPECIFIED = 0;
+	LEVEL_OUT = 1;
+	LEVEL_ERR = 2;
+}
+
+message Status {
+	bool running = 1;
+}
+
+message Pid {
+	int32 id = 1;
+}
+
+message Event {
+    string id = 1;
+	oneof event_kind {
+		Status status = 2;
+		Pid pid = 3;
+	}
+}
+
+message QemuServiceStatusResponse {
+    Event event = 1;
+}
+
+message QemuServiceInfoRequest {
+	repeated string ids = 1;
+}
+
+message QemuServiceInfo {
+	string name = 1;
+	repeated string ipaddresses = 2;
+}
+
+message QemuServiceInfoResponse {
+	repeated QemuServiceInfo info = 1;
+}
+
+service QemuService {
+    rpc Start(QemuServiceStartRequest) returns (QemuServiceStartResponse) {}
+    rpc Stop(QemuServiceStopRequest) returns (google.protobuf.Empty) {}
+    rpc Info(QemuServiceInfoRequest) returns (QemuServiceInfoResponse) {}
+    rpc Status(QemuServiceStatusRequest) returns (stream QemuServiceStatusResponse) {}
+}
