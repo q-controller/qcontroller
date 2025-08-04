@@ -114,7 +114,8 @@ EOF
 cat >${CONFIGDIR}/gateway-config.json <<EOF
 {
     "port": ${GATEWAY_PORT},
-    "controllerEndpoint": "localhost:${CONTROLLER_PORT}"
+    "controllerEndpoint": "localhost:${CONTROLLER_PORT}",
+    "exposeSwaggerUi": true
 }
 EOF
 
