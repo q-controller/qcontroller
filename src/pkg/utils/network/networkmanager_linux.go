@@ -17,7 +17,6 @@ var ErrNetworkDisconnected = errors.New("network disconnected")
 type linuxNetworkManager struct {
 	bridgeName string
 	mu         sync.RWMutex
-	taps       map[string]bool
 	done       chan struct{}
 	events     chan Event
 }
@@ -53,11 +52,6 @@ func (m *linuxNetworkManager) CreateInterface(interfaceName string) error {
 		return tapErr
 	}
 
-	m.taps[interfaceName] = true
-	m.events <- &NetworkInterfaceAdded{
-		Name: interfaceName,
-	}
-
 	return nil
 }
 
@@ -65,14 +59,8 @@ func (m *linuxNetworkManager) RemoveInterface(interfaceName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, interfaceExists := m.taps[interfaceName]; interfaceExists {
-		delete(m.taps, interfaceName)
-
-		m.events <- &NetworkInterfaceRemoved{
-			Name: interfaceName,
-		}
-
-		return ifc.DeleteLink(interfaceName)
+	if tapErr := ifc.DeleteLink(interfaceName); tapErr != nil && !errors.Is(tapErr, ifc.ErrLinkExists) {
+		return tapErr
 	}
 
 	return nil
@@ -85,7 +73,6 @@ func NewNetworkManager(bridgeName, subnet string) (NetworkManager, error) {
 
 	nm := &linuxNetworkManager{
 		bridgeName: bridgeName,
-		taps:       make(map[string]bool),
 		done:       make(chan struct{}),
 		events:     make(chan Event, 10),
 	}
@@ -94,27 +81,10 @@ func NewNetworkManager(bridgeName, subnet string) (NetworkManager, error) {
 	go func() {
 		for event := range nm.events {
 			switch ev := event.(type) {
-			case *NetworkInterfaceAdded:
-				if tapErr := firewall.ConfigureTap("", currentDefaultInterface, ev.Name); tapErr != nil {
-					slog.Error("could not configure tap", "tap", ev.Name, "error", tapErr)
-				}
-			case *NetworkInterfaceRemoved:
-				if tapErr := firewall.ConfigureTap(currentDefaultInterface, "", ev.Name); tapErr != nil {
-					slog.Error("could not configure tap", "tap", ev.Name, "error", tapErr)
-				}
 			case *DefaultInterfaceChanged:
 				if firewallErr := firewall.ConfigureFirewall(ev.OldInterface,
 					ev.NewInterface,
-					subnet); firewallErr == nil {
-					nm.mu.RLock()
-					for tap := range nm.taps {
-						if tapErr := firewall.ConfigureTap(ev.OldInterface,
-							ev.NewInterface,
-							tap); tapErr != nil {
-							slog.Error("could not configure tap", "tap", tap, "error", tapErr)
-						}
-					}
-					nm.mu.RUnlock()
+					bridgeName); firewallErr == nil {
 				} else {
 					slog.Error("could not configure firewall", "new interface", ev.NewInterface, "error", firewallErr)
 				}
