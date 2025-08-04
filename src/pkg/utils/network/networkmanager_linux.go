@@ -6,8 +6,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/krjakbrjak/qcontroller/src/pkg/utils/network/firewall"
-	"github.com/krjakbrjak/qcontroller/src/pkg/utils/network/ifc"
+	"github.com/q-controller/network-utils/src/utils/network/firewall"
+	"github.com/q-controller/network-utils/src/utils/network/ifc"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 )
@@ -48,7 +48,7 @@ func (m *linuxNetworkManager) CreateInterface(interfaceName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if tapErr := ifc.CreateTap(interfaceName, m.bridgeName); tapErr != nil && !errors.Is(tapErr, ifc.ErrLinkExists) {
+	if tapErr := ifc.CreateTap(interfaceName, m.bridgeName); tapErr != nil {
 		return tapErr
 	}
 
@@ -59,7 +59,7 @@ func (m *linuxNetworkManager) RemoveInterface(interfaceName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if tapErr := ifc.DeleteLink(interfaceName); tapErr != nil && !errors.Is(tapErr, ifc.ErrLinkExists) {
+	if tapErr := ifc.DeleteLink(interfaceName); tapErr != nil {
 		return tapErr
 	}
 

@@ -4,3 +4,6 @@
 [submodule "qapi-client"]
 	path = qapi-client
 	url = ../qapi-client.git
+[submodule "network-utils"]
+	path = network-utils
+	url = ../network-utils.git
