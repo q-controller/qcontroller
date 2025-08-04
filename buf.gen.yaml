@@ -15,4 +15,4 @@ plugins:
       - paths=source_relative
       - generate_unbound_methods=true
   - local: protoc-gen-openapiv2
-    out: src/generated/openapiv2
+    out: src/qcontrollerd/cmd/docs

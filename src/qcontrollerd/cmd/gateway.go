@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,9 +14,13 @@ import (
 	settingsv1 "github.com/krjakbrjak/qcontroller/src/generated/settings/v1"
 	"github.com/krjakbrjak/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+//go:embed docs/services/v1/controller.swagger.json
+var openAPISpecs string
 
 type uploader struct {
 	cli v1.FileRegistryServiceClient
@@ -92,6 +97,27 @@ var gwCmd = &cobra.Command{
 		defer cancel()
 
 		mux := runtime.NewServeMux()
+
+		if config.ExposeSwaggerUi {
+			if specsErr := mux.HandlePath("GET", "/openapiv2.json", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+				if _, err := w.Write([]byte(openAPISpecs)); err != nil {
+					slog.Warn("Failed to write response", "error", err)
+				}
+			}); specsErr == nil {
+				if swaggerErr := mux.HandlePath("GET", "/v1/swagger/*", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+					httpSwagger.Handler(
+						httpSwagger.URL("/openapiv2.json"),
+						httpSwagger.Layout("BaseLayout"),
+						httpSwagger.DefaultModelsExpandDepth(httpSwagger.HideModel),
+					)(w, r)
+				}); swaggerErr != nil {
+					slog.Warn("Failed to register swagger endpoint", "error", swaggerErr)
+				}
+			} else {
+				slog.Warn("Failed to register specs endpoint", "error", specsErr)
+			}
+		}
+
 		if err := mux.HandlePath("POST", "/v1/images", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
