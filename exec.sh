@@ -21,6 +21,12 @@ mkdir -p ${CACHE_DIR}/.go
 mkdir -p ${CACHE_DIR}/.go-mod-cache
 mkdir -p ${CACHE_DIR}/.buf
 
+if OS_TYPE="$(uname -s)" && [[ "$OS_TYPE" == "Linux" ]]; then
+    GOOS=linux
+else
+    GOOS=darwin
+fi
+
 docker run --rm -it -v "${script_dir}:${script_dir}" \
     -v "${CACHE_DIR}/.go:${CACHE_DIR}/.go" \
     -v "${CACHE_DIR}/.go-mod-cache:${CACHE_DIR}/.go-mod-cache" \
@@ -29,5 +35,6 @@ docker run --rm -it -v "${script_dir}:${script_dir}" \
     -e BUF_CACHE_DIR=${CACHE_DIR}/.buf \
     -e GOCACHE=${CACHE_DIR}/.go \
     -e GOMODCACHE=${CACHE_DIR}/.go-mod-cache \
+    -e GOOS=${GOOS} \
     $(docker build -q -t buf --target pre-build . -f Dockerfile --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)) \
     bash -c "$@"
