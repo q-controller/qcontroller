@@ -1,0 +1,9 @@
+build
+.git
+src/generated
+**/.venv
+Containerfile
+docker-compose.yml
+*.json
+start.sh
+exec.sh
