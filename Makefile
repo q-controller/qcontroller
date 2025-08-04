@@ -24,6 +24,10 @@ generate:
 
 	rm -f ${GEN_DIR}/services/v1/process.pb.gw.go
 	rm -f ${GEN_DIR}/openapiv2/services/v1/process.swagger.json
+	rm -f ${GEN_DIR}/openapiv2/services/v1/fileregistry.swagger.json
+	rm -f ${GEN_DIR}/openapiv2/services/v1/networkmanager.swagger.json
+	rm -fr ${GEN_DIR}/openapiv2/settings
+	rm -fr ${GEN_DIR}/openapiv2/vm
 
 qcontrollerd: generate
 	go build -o ${BUILD_DIR}/qcontrollerd src/qcontrollerd/main.go
