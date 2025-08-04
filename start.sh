@@ -55,6 +55,10 @@ parse_params() {
                 INTERFACE_NAME="${2-}"
                 shift
                 ;;
+            --cidr)
+                SUBNET="${2-}"
+                shift
+                ;;
             --bin)
                 QCONTROLLERD="${2-}"
                 shift
