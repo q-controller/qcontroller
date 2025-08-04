@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package vm.statemachine.v1;
+
+import "settings/v1/settings.proto";
+
+option go_package = "github.com/krjakbrjak/qcontroller/src/generated/vm/statemachine/v1;v1";
+
+enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_STARTING = 1;
+    STATE_RUNNING = 2;
+    STATE_REQUESTINGSTOP = 3;
+    STATE_STOPPED = 4;
+}
+
+enum Event {
+    EVENT_UNSPECIFIED = 0;
+    EVENT_START = 1;
+    EVENT_STOP = 2;
+    EVENT_FINISH = 3;
+    EVENT_QUIT = 4;
+}
+
+message Instance {
+    string id = 1;
+    settings.v1.VM hardware = 2;
+    optional string hwaddr = 3;
+    string path = 4;
+    State state = 5;
+    optional int32 pid = 6;
+}

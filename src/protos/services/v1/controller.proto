@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package services.v1;
+
+import "settings/v1/settings.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/krjakbrjak/qcontroller/src/generated/services/v1;v1";
+
+message CreateRequest {
+    settings.v1.VM vm = 1;
+    string name = 2;
+    string image = 3;
+    bool start = 4;
+}
+
+message StartRequest {
+    string name = 1;
+}
+
+message StopRequest {
+    string name = 1;
+    bool force = 2;
+}
+
+message VMResponse {
+    string name = 1;
+}
+
+message InfoRequest {
+    string name = 1;
+}
+
+message RemoveRequest {
+    string name = 1;
+}
+
+message Info {
+    string name = 1;
+    settings.v1.VM details = 2;
+    string state = 3;
+    repeated string ipaddresses = 4;
+}
+
+message InfoResponse {
+    repeated Info info = 1;
+}
+
+service ControllerService {
+    rpc Create(CreateRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/instances"
+            body: "*"
+        };
+    }
+
+    rpc Start(StartRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/instances/{name}/start"
+            body: "*"
+        };
+    }
+
+    rpc Stop(StopRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/instances/{name}/stop"
+            body: "*"
+        };
+    }
+
+    rpc Remove(RemoveRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            delete: "/v1/instances/{name}"
+        };
+    }
+
+    rpc Info(InfoRequest) returns (InfoResponse) {
+        option (google.api.http) = {
+            get: "/v1/instances/{name}"
+        };
+    }
+}

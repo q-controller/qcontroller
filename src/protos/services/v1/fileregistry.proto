@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package services.v1;
+
+option go_package = "github.com/krjakbrjak/qcontroller/src/generated/services/v1;v1";
+
+message UploadImageRequest {
+    string image_id = 1;
+    bytes chunk = 2;
+    bool replace = 3; // optional: sent in the first message only
+}
+
+message UploadImageResponse {
+    string image_id = 1;
+}
+
+message DownloadImageRequest {
+    string image_id = 1;
+}
+
+message DownloadImageResponse {
+    bytes chunk = 1;
+}
+
+service FileRegistryService {
+    rpc UploadImage(stream UploadImageRequest) returns (UploadImageResponse) {}
+    rpc DownloadImage(DownloadImageRequest) returns (stream DownloadImageResponse) {}
+}
