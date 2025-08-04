@@ -1,0 +1,6 @@
+[submodule "qemu-client"]
+	path = qemu-client
+	url = ../qemu-client.git
+[submodule "qapi-client"]
+	path = qapi-client
+	url = ../qapi-client.git
