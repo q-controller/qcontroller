@@ -79,7 +79,7 @@ func (m *linuxNetworkManager) RemoveInterface(interfaceName string) error {
 }
 
 func NewNetworkManager(bridgeName, subnet string) (NetworkManager, error) {
-	if bridgeErr := ifc.CreateBridge(bridgeName, subnet); bridgeErr != nil {
+	if bridgeErr := ifc.CreateBridge(bridgeName, subnet, true); bridgeErr != nil {
 		return nil, bridgeErr
 	}
 

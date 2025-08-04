@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os/exec"
 	"slices"
 	"syscall"
 
@@ -38,7 +39,7 @@ func getFirstUsableIP(ipNet *net.IPNet) net.IP {
 	return firstUsable
 }
 
-func CreateBridge(name string, subnet string) error {
+func CreateBridge(name string, subnet string, disableTxOffloading bool) error {
 	_, ipnet, ipErr := net.ParseCIDR(subnet)
 	if ipErr != nil {
 		return fmt.Errorf("failed to parse subnet %s: %v", subnet, ipErr)
@@ -101,6 +102,11 @@ func CreateBridge(name string, subnet string) error {
 	}
 
 	slog.Debug("successfully created bridge", "name", bridgeAttrs.Name)
+
+	if disableTxOffloading {
+		cmd := exec.Command("ethtool", "-K", name, "tx", "off")
+		return cmd.Run()
+	}
 
 	return nil
 }
