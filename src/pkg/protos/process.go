@@ -50,7 +50,7 @@ func (q *QemuServer) Start(ctx context.Context,
 		}
 	}
 
-	if req.Pid == nil || qemuInstance == nil {
+	if qemuInstance == nil {
 		if q.nm != nil {
 			if ifcErr := q.nm.CreateInterface(id); ifcErr != nil {
 				return nil, status.Errorf(codes.Internal, "method Start failed: %v", ifcErr)
