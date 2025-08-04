@@ -13,6 +13,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822
 	google.golang.org/grpc v1.73.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

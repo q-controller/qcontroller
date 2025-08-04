@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -17,9 +18,10 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"gopkg.in/yaml.v3"
 )
 
-//go:embed docs/services/v1/controller.swagger.json
+//go:embed docs/openapi.yaml
 var openAPISpecs string
 
 type uploader struct {
@@ -99,14 +101,85 @@ var gwCmd = &cobra.Command{
 		mux := runtime.NewServeMux()
 
 		if config.ExposeSwaggerUi {
-			if specsErr := mux.HandlePath("GET", "/openapiv2.json", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
-				if _, err := w.Write([]byte(openAPISpecs)); err != nil {
-					slog.Warn("Failed to write response", "error", err)
+			if specsErr := mux.HandlePath("GET", "/openapi.yaml", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+				var spec map[string]interface{}
+				if err := yaml.Unmarshal([]byte(openAPISpecs), &spec); err != nil {
+					log.Fatalf("Failed to parse OpenAPI spec: %v", err)
+				}
+
+				tag := "ImageService"
+				if existingTags, ok := spec["tags"].([]string); ok {
+					// Avoid duplicates
+					found := false
+					for _, t := range existingTags {
+						if t == tag {
+							found = true
+							break
+						}
+					}
+					if !found {
+						spec["tags"] = append(existingTags, tag)
+					}
+				} else {
+					// Create new tags array
+					spec["tags"] = []string{tag}
+				}
+
+				newPath := map[string]interface{}{
+					"post": map[string]interface{}{
+						"tags":        []string{tag},
+						"summary":     "Upload image",
+						"description": "Uploads an image file with an associated ID",
+						"requestBody": map[string]interface{}{
+							"required": true,
+							"content": map[string]interface{}{
+								"multipart/form-data": map[string]interface{}{
+									"schema": map[string]interface{}{
+										"type": "object",
+										"properties": map[string]interface{}{
+											"id": map[string]interface{}{
+												"type": "string",
+											},
+											"file": map[string]interface{}{
+												"type":   "string",
+												"format": "binary",
+											},
+										},
+										"required": []string{"id", "file"},
+									},
+								},
+							},
+						},
+						"responses": map[string]interface{}{
+							"200": map[string]interface{}{
+								"description": "Upload successful",
+							},
+							"400": map[string]interface{}{
+								"description": "Bad request",
+							},
+							"500": map[string]interface{}{
+								"description": "Internal server error",
+							},
+						},
+					},
+				}
+
+				if paths, ok := spec["paths"].(map[string]interface{}); ok {
+					paths["/v1/images"] = newPath
+				}
+				if bytes, err := yaml.Marshal(spec); err != nil {
+					if _, err := w.Write([]byte(openAPISpecs)); err != nil {
+						slog.Warn("Failed to write response", "error", err)
+					}
+				} else {
+					if _, err := w.Write(bytes); err != nil {
+						slog.Warn("Failed to write response", "error", err)
+					}
 				}
 			}); specsErr == nil {
 				if swaggerErr := mux.HandlePath("GET", "/v1/swagger/*", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
 					httpSwagger.Handler(
-						httpSwagger.URL("/openapiv2.json"),
+						httpSwagger.URL("/openapi.yaml"),
 						httpSwagger.Layout("BaseLayout"),
 						httpSwagger.DefaultModelsExpandDepth(httpSwagger.HideModel),
 					)(w, r)

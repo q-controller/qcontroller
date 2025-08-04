@@ -14,5 +14,13 @@ plugins:
     opt:
       - paths=source_relative
       - generate_unbound_methods=true
-  - local: protoc-gen-openapiv2
+  - local: protoc-gen-openapi
     out: src/qcontrollerd/cmd/docs
+    strategy: all
+    opt:
+      - fq_schema_naming=true
+      - default_response=false
+      - title=Controller Service
+      - version=v1
+      - description=This is the OpenAPI schema for Controller gRPC API
+      - naming=json
