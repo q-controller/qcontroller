@@ -1,64 +1,122 @@
 # QEMU VM Controller
 
-This project provides a tool to simplify the management of QEMU-based virtual machine (VM) instances. It supports four main operations:
+**QEMU VM Controller** (or `qcontroller`) is a flexible, API-driven tool for managing QEMU-based virtual machine instances on Linux and macOS. It is designed for users who need precise control over VM networking, image management, and orchestration—whether for local development, testing, or reproducible infrastructure setups.
 
-1. **Launch** – Creates (and optionally starts) a new VM.
-2. **Start** – Starts an existing, stopped VM.
-3. **Stop** – Stops a running VM.
-4. **Info** – Retrieves information about a VM.
+`qcontroller` provides a unified interface for four primary VM operations:
 
-The interfaces for these operations are defined in the [proto files](/src/protos/). The core functionality is implemented as a set of gRPC services. To make the tool more accessible, an HTTP service is also provided, which understands all supported operations and their parameters.
+1. **Launch** – Create and optionally start a new VM from a known image.
+2. **Start** – Resume a stopped VM.
+3. **Stop** – Gracefully or forcefully stop a running VM.
+4. **Info** – Query the status and configuration of a VM.
 
-## Build
+Operations are defined using [Protocol Buffers](/src/protos/) and exposed via both **gRPC** and a **RESTful HTTP gateway**, making integration with scripts, dashboards, or automation frameworks straightforward.
 
-```shell
+---
+
+![Architecture Diagram](/architecture.svg)
+
+---
+
+## ✨ Highlights
+
+- 🛠 **Single static binary**: All logic is bundled into one Go binary with multiple subcommands.
+- 🖥 **Cross-platform support**: Works on Linux and macOS (Intel tested; Apple Silicon supported via QEMU).
+- 🧠 **Declarative VM descriptions**: Define VM specs via JSON configs matching Protobuf definitions.
+- 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
+- 📦 **Custom image support**: Upload and manage your own VM images via API.
+- 📜 **Auto-generated OpenAPI schema**: Serves interactive API docs using [http-swagger](https://github.com/swaggo/http-swagger).
+- 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
+
+---
+
+## 🚀 Getting Started
+
+### Build Instructions
+
+To build the binary, run:
+
+```bash
 make
 ```
 
-## Running
+## Subcommands
 
-The compiled binary offers three subcommands:
+The compiled binary provides the following subcommands:
 
-1. **`qemu`** – Starts and stops VM instances. This acts as a wrapper around the QEMU system binary. It is implemented as a separate subcommand because running QEMU commands often requires elevated privileges (on Linux, for creating or removing TAP devices; on macOS, due to `vmnet` restrictions). This design ensures that only the necessary operations require elevated rights, rather than the entire application.
-2. **`controller`** – Manages VM instances by starting, stopping, and monitoring them. It communicates with the `qemu` subcommand via gRPC.
-3. **`gateway`** – A gRPC gateway that exposes public HTTP endpoints, making the application easier to use.
+* `qemu` – Thin wrapper for the QEMU system binary; handles actual VM process execution.
+* `controller` – Manages VM lifecycle and communication via gRPC.
+* `gateway` – Exposes REST endpoints mapped from gRPC via gRPC-Gateway.
 
-Each subcommand expects a corresponding configuration file in JSON format, structured according to its Protobuf [definitions](/src/protos/settings/v1/settings.proto).
+> **Separation of Controller and QEMU**:
+> It's important to note that the application was split into two  components: the controller and QEMU. This separation was necessary because the qemu command requires elevated privileges due to its use of networking features such as TAP on Linux and vmnet on macOS.
+> To avoid granting elevated rights to the entire application, a minimal QEMU service was created. This service runs as root and is responsible solely for executing the qemu command. The controller, on the other hand, manages the virtual machine lifecycle and runs as a non-root user, ensuring a more secure and controlled execution environment.
 
-**Note:** On Linux, a DHCP server is required to fully automate VM networking.
+Running the App
 
-The project is built as a single binary for easy distribution. All subcommands must be running for the application to function correctly, so some form of orchestration is needed. On Linux, it is recommended to use `systemd` for this purpose. For convenience, a [startup script](/start.sh) is provided. Run `bash start.sh -h` for usage details.
+Each subcommand expects a JSON configuration file matching its Protobuf [definitions](/src/protos/settings/v1/settings.proto).
 
-## Prerequisites
-
-### Build Prerequisites
-
-- `make`
-- `git`
-- `protoc`
-- `go`
-- Go tools:
-    - `protoc-gen-go`
-    - `protoc-gen-go-grpc`
-    - [`buf`](https://github.com/bufbuild/buf)
-    - `protoc-gen-grpc-gateway`
-    - `protoc-gen-openapi`
-    - `golangci-lint`
-
-For local development, you can use the provided [Docker container](/Dockerfile), which includes all prerequisites. Prefix any project command with `exec.sh`. For example, to run the linter:
-
+All subcommands must run concurrently; orchestration (e.g., via `systemd` on Linux) is recommended. A [startup script](/start.sh) is provided to run all required components together
 ```shell
-./exec.sh "make lint"
+bash start.sh -h
 ```
 
-To build a VM image with QEMU Guest Agent (QGA), [Packer](https://www.packer.io/) is required:
+This command will start all three components:
+- ➜ gateway: `http://localhost:8080`
+- ➜ qemu: `0.0.0.0:8008`
+- ➜ controller: `0.0.0.0:8009`
+
+Then hit the REST API (e.g. using swagger ui, that is hosted at `http://localhost:8080/v1/swagger/index.html`):
+
+<img src="./swagger.png" alt="swagger UI snapshot" width="900"/>
+
+## Example Base Image
+
+This repo includes tooling to build a base Ubuntu Cloud image with the QEMU Guest Agent (QGA), compatible with qcontroller's QAPI integration.
+Use [Packer](https://www.packer.io/) to build it:
 
 ```shell
 packer init .
 packer build .
 ```
 
-### Runtime Prerequisites
+See [qga](/qga/README.md) for details on building QGA.
 
-- `qemu-system-x86_64` (currently, only x86_64 is supported and tested)
+## 📎 API Access
 
+The gRPC gateway automatically generates a Swagger-compatible OpenAPI schema. A basic Swagger UI is served at:
+
+```shell
+http://localhost:8080/v1/swagger/index.html
+```
+All REST endpoints follow the schema defined in [/src/protos/](/src/protos/).
+
+## 🧪 Development Setup
+
+Use the provided [Dockerfile](/Dockerfile) to ensure a consistent dev environment.
+
+To run commands inside the container:
+```shell
+./exec.sh "make lint"
+```
+
+This wraps the environment with all Go tools and build dependencies preinstalled.
+
+## Build Dependencies
+
+- `make` `git` `go` `protoc`
+- Go plugins:
+    - `protoc-gen-go` `protoc-gen-go-grpc`
+    - [`buf`](https://github.com/bufbuild/buf)
+    - [`protoc-gen-grpc-gateway`](https://github.com/grpc-ecosystem/grpc-gateway)
+    - [`protoc-gen-openapi`](https://github.com/google/gnostic)
+    - [`golangci-lint`](https://github.com/golangci/golangci-lint)
+
+## Runtime Dependencies
+
+- `qemu-system-x86_64` (currently, only x86_64 VMs are supported and tested)
+
+## 🔧 Networking Notes
+
+On Linux, a DHCP server is required for automated VM networking (e.g., bridge + TAP). For setup and an example configuration, see [dhcp](/dhcp/README.md).
+
+> **Note**: DHCP is not bundled with this project to give users the freedom to plug into their existing setup
