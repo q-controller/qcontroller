@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package services.v1;
 
-option go_package = "github.com/krjakbrjak/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
 
 message UploadImageRequest {
     string image_id = 1;

@@ -11,9 +11,9 @@ import (
 	"net/http"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	v1 "github.com/krjakbrjak/qcontroller/src/generated/services/v1"
-	settingsv1 "github.com/krjakbrjak/qcontroller/src/generated/settings/v1"
-	"github.com/krjakbrjak/qcontroller/src/pkg/utils"
+	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"google.golang.org/grpc"

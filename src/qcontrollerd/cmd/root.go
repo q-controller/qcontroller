@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/krjakbrjak/qcontroller/src/pkg/logging"
+	"github.com/q-controller/qcontroller/src/pkg/logging"
 	"github.com/spf13/cobra"
 )
 

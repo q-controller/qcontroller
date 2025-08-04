@@ -1,6 +1,6 @@
 package controller
 
-import v1 "github.com/krjakbrjak/qcontroller/src/generated/vm/statemachine/v1"
+import v1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 
 type State interface {
 	Update(instance *v1.Instance) (*v1.Instance, error)

@@ -1,8 +1,8 @@
 package process
 
 import (
-	servicesv1 "github.com/krjakbrjak/qcontroller/src/generated/services/v1"
-	"github.com/krjakbrjak/qemu-client/pkg/qemu"
+	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	"github.com/q-controller/qemu-client/pkg/qemu"
 )
 
 type Item struct {

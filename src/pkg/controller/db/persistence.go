@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/dgraph-io/badger/v4"
-	vmv1 "github.com/krjakbrjak/qcontroller/src/generated/vm/statemachine/v1"
-	"github.com/krjakbrjak/qcontroller/src/pkg/controller"
+	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
+	"github.com/q-controller/qcontroller/src/pkg/controller"
 )
 
 var ErrNoInstanceRemoved = errors.New("no instance was removed")

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package settings.v1;
 
-option go_package = "github.com/krjakbrjak/qcontroller/src/generated/settings/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/settings/v1;v1";
 
 message VM {
     uint32 cpus = 1;

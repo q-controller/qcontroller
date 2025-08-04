@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	servicesv1 "github.com/krjakbrjak/qcontroller/src/generated/services/v1"
-	"github.com/krjakbrjak/qcontroller/src/pkg/utils"
+	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

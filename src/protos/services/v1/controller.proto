@@ -6,7 +6,7 @@ import "settings/v1/settings.proto";
 import "google/protobuf/empty.proto";
 import "google/api/annotations.proto";
 
-option go_package = "github.com/krjakbrjak/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
 
 message CreateRequest {
     settings.v1.VM vm = 1;
