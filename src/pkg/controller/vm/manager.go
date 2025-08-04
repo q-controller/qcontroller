@@ -211,6 +211,8 @@ func (m *Manager) Info(id string) ([]*servicesv1.Info, error) {
 	return res, nil
 }
 
+// singleton and once implement a thread-safe singleton pattern for Manager.
+// This ensures only one instance of Manager is created and shared across the application.
 var singleton *Manager
 var once sync.Once
 
