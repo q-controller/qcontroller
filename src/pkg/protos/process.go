@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/krjakbrjak/qapi-client/src/client"
+	"github.com/krjakbrjak/qcontroller/src/generated/qapi"
 	"github.com/krjakbrjak/qcontroller/src/generated/qga"
 	servicesv1 "github.com/krjakbrjak/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/krjakbrjak/qcontroller/src/generated/settings/v1"
@@ -129,14 +130,11 @@ func (q *QemuServer) Stop(ctx context.Context,
 			return &emptypb.Empty{}, nil
 		}
 
-		mode := "powerdown"
-		shReq, shReqErr := qga.PrepareGuestShutdownRequest(qga.QObjGuestShutdownArg{
-			Mode: &mode,
-		})
+		shReq, shReqErr := qapi.PrepareSystemPowerdownRequest()
 		if shReqErr != nil {
 			return nil, shReqErr
 		}
-		_, chErr := q.monitor.Execute(fmt.Sprintf("%s:%s", process.PREFIX_QGA, req.Id), client.Request(*shReq))
+		_, chErr := q.monitor.Execute(fmt.Sprintf("%s:%s", process.PREFIX_QMP, req.Id), client.Request(*shReq))
 		if chErr != nil {
 			return nil, chErr
 		}
