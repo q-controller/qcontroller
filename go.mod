@@ -2,6 +2,8 @@ module github.com/krjakbrjak/qcontroller
 
 go 1.24.3
 
+replace github.com/q-controller/network-utils => ./network-utils
+
 replace github.com/krjakbrjak/qemu-client => ./qemu-client
 
 replace github.com/krjakbrjak/qapi-client => ./qapi-client
@@ -10,6 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.0
 	github.com/krjakbrjak/qemu-client v0.0.0-00010101000000-000000000000
+	github.com/q-controller/network-utils v0.0.0
 	github.com/spf13/cobra v1.9.1
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822
 	google.golang.org/grpc v1.73.0
@@ -29,6 +32,7 @@ require (
 	github.com/go-openapi/swag v0.19.15 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/nftables v0.3.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mailru/easyjson v0.7.6 // indirect
@@ -52,7 +56,6 @@ require (
 
 require (
 	github.com/dgraph-io/badger/v4 v4.8.0
-	github.com/google/nftables v0.3.0
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/krjakbrjak/qapi-client v0.0.0-00010101000000-000000000000
 	github.com/spf13/pflag v1.0.6 // indirect
