@@ -11,6 +11,7 @@ QEMU_PORT=8008
 GATEWAY_PORT=8080
 QCONTROLLERD=""
 RUNDIR=""
+pids=()
 
 OS_TYPE="$(uname -s)"
 
@@ -138,22 +139,33 @@ EOF
 
 touch ${LOGDIR}/qemu.out
 touch ${LOGDIR}/qemu.err
+sudo -v
 sudo ${QCONTROLLERD} qemu -c ${CONFIGDIR}/qemu-config.json >${LOGDIR}/qemu.out 2>${LOGDIR}/qemu.err &
+pids+=($!)
 
 # Wait until qemu is ready
 sleep 1
 
 ${QCONTROLLERD} gateway -c ${CONFIGDIR}/gateway-config.json >${LOGDIR}/gateway.out 2>${LOGDIR}/gateway.err &
-GATEWAY_PID=$!
+pids+=($!)
 
 # Wait until gateway is ready
 sleep 1
 
 ${QCONTROLLERD} controller -c ${CONFIGDIR}/controller-config.json >${LOGDIR}/controller.out 2>${LOGDIR}/controller.err &
-CONTROLLER_PID=$!
+pids+=($!)
 
 # Wait until controller is ready
 sleep 1
 
-# Wait for the first one to fail and then stop everything
-wait -n
+# Wait for the first one to finish
+while :; do
+    for pid in "${pids[@]}"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid"
+            echo "Process $pid finished"
+            exit 0
+        fi
+    done
+    sleep 0.1
+done
