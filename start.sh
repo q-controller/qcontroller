@@ -12,10 +12,12 @@ GATEWAY_PORT=8080
 QCONTROLLERD=""
 RUNDIR=""
 
+OS_TYPE="$(uname -s)"
+
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)
 
 usage() {
-  cat <<EOF
+    cat <<EOF
 Usage: $(basename "${BASH_SOURCE[0]}") [-h] --rundir PATH --bin PATH [--interface NAME] [--cidr VALUE]
 
 Starts qcontrollerd
@@ -25,10 +27,10 @@ Available options:
 -h, --help      Print this help and exit
 --bin           Path to qcontrollerd binary
 --rundir        Path to the rundir
---interface     Interface name [defrault: ${INTERFACE_NAME}]
---cidr          Subnet [default: ${SUBNET}]
+--interface     Interface name [default: ${INTERFACE_NAME}] (Linux only)
+--cidr          Subnet [default: ${SUBNET}] (Linux only)
 EOF
-  exit
+    exit
 }
 
 cleanup() {
@@ -52,11 +54,15 @@ parse_params() {
         case "${1-}" in
             -h | --help) usage ;;
             --interface)
-                INTERFACE_NAME="${2-}"
+                if [[ "$OS_TYPE" == "Linux" ]]; then
+                    INTERFACE_NAME="${2-}"
+                fi
                 shift
                 ;;
             --cidr)
-                SUBNET="${2-}"
+                if [[ "$OS_TYPE" == "Linux" ]]; then
+                    SUBNET="${2-}"
+                fi
                 shift
                 ;;
             --bin)
@@ -75,7 +81,6 @@ parse_params() {
 
     args=("$@")
 
-    # check required params and arguments
     [[ -z "${RUNDIR-}" ]] && die "Missing required parameter: rundir"
     [[ -z "${QCONTROLLERD-}" ]] && die "Missing required parameter: bin"
 
@@ -92,6 +97,7 @@ mkdir -p ${CONFIGDIR}
 mkdir -p ${ROOTDIR}
 mkdir -p ${LOGDIR}
 
+if [[ "$OS_TYPE" == "Linux" ]]; then
 cat >${CONFIGDIR}/qemu-config.json <<EOF
 {
     "port": "${QEMU_PORT}",
@@ -103,6 +109,13 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
     }
 }
 EOF
+else
+cat >${CONFIGDIR}/qemu-config.json <<EOF
+{
+    "port": "${QEMU_PORT}"
+}
+EOF
+fi
 
 cat >${CONFIGDIR}/controller-config.json <<EOF
 {
