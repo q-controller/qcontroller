@@ -4,7 +4,7 @@ package vm.statemachine.v1;
 
 import "settings/v1/settings.proto";
 
-option go_package = "github.com/krjakbrjak/qcontroller/src/generated/vm/statemachine/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1;v1";
 
 enum State {
     STATE_UNSPECIFIED = 0;

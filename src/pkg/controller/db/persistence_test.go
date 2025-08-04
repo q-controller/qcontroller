@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/dgraph-io/badger/v4"
-	settingsv1 "github.com/krjakbrjak/qcontroller/src/generated/settings/v1"
-	vmv1 "github.com/krjakbrjak/qcontroller/src/generated/vm/statemachine/v1"
+	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 )
 
 func tempDB(t *testing.T) (*databaseImpl, func()) {

@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/krjakbrjak/qapi-client/src/client"
-	"github.com/krjakbrjak/qcontroller/src/generated/qapi"
-	"github.com/krjakbrjak/qcontroller/src/generated/qga"
+	"github.com/q-controller/qapi-client/src/client"
+	"github.com/q-controller/qcontroller/src/generated/qapi"
+	"github.com/q-controller/qcontroller/src/generated/qga"
 )
 
 type Greeting struct {

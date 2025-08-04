@@ -3,9 +3,9 @@ package protos
 import (
 	"context"
 
-	servicesv1 "github.com/krjakbrjak/qcontroller/src/generated/services/v1"
-	settingsv1 "github.com/krjakbrjak/qcontroller/src/generated/settings/v1"
-	"github.com/krjakbrjak/qcontroller/src/pkg/utils/network"
+	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/utils/network"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 

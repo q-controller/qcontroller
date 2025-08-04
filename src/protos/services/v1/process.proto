@@ -5,7 +5,7 @@ package services.v1;
 import "settings/v1/settings.proto";
 import "google/protobuf/empty.proto";
 
-option go_package = "github.com/krjakbrjak/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
 
 message NetworkConfig {
 	string driver = 1;
