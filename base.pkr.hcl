@@ -83,13 +83,39 @@ users:
     groups: sudo
     lock_passwd: false
 packages: []
+network:
+  version: 2
+  ethernets:
+    all-eth:
+      match:
+        name: "*"
+      dhcp4: true
+      dhcp6: false
+      optional: true
+write_files:
+  - path: /etc/netplan/50-cloud-init.yaml
+    permissions: '0600'
+    content: |
+      network:
+        version: 2
+        ethernets:
+          any-eth:
+            match:
+              name: "*"
+            dhcp4: true
+            dhcp6: false
+            optional: true
+runcmd:
+  - rm -f /etc/netplan/50-cloud-init.yaml.dpkg*
+  - netplan generate
+  - netplan apply
 EOF
   }
   qemuargs = [
     ["-cpu", "host"],
     ["-smbios", "type=1,serial=ds=nocloud-net;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/"]
   ]
-  shutdown_command = "echo '${var.password}' | sudo -S shutdown -P now"
+  shutdown_command = "sudo -S shutdown -P now"
 }
 
 build {
@@ -122,21 +148,7 @@ build {
       "sudo mkdir -p /usr/var/run",
 
       "sudo systemctl daemon-reload",
-      "sudo systemctl enable qemu-guest-agent.service",
-
-      "cat <<EOF | sudo tee /etc/netplan/01-netcfg.yaml",
-      "network:",
-      "  version: 2",
-      "  ethernets:",
-      "    all-virtio:",
-      "      match:",
-      "        driver: virtio_net",
-      "      dhcp4: yes",
-      "      set-name: eth0",
-      "EOF",
-      "sudo chmod 600 /etc/netplan/01-netcfg.yaml",
-      "sudo netplan apply",
-      "sudo systemctl enable systemd-networkd"
+      "sudo systemctl enable qemu-guest-agent.service"
     ]
   }
 }
