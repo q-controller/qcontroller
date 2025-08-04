@@ -1,0 +1,4 @@
+*.log
+*.img*
+generated
+build
