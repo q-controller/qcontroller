@@ -6,8 +6,11 @@ ARG USER_ID
 RUN apt update
 RUN apt install -y protobuf-compiler
 
-RUN addgroup --gid ${GROUP_ID} qcontrollerd && \
-    adduser --uid ${USER_ID} --gid ${GROUP_ID} qcontrollerd
+RUN if ! getent group ${GROUP_ID} > /dev/null; then \
+      addgroup --gid ${GROUP_ID} qcontrollerd; \
+    fi && \
+    adduser --uid ${USER_ID} --gid ${GROUP_ID} --disabled-password --gecos "" qcontrollerd
+
 
 RUN apt install -y python3-venv
 USER qcontrollerd
