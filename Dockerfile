@@ -7,7 +7,7 @@ RUN apt update
 RUN apt install -y protobuf-compiler
 
 RUN if ! getent group ${GROUP_ID} > /dev/null; then \
-      addgroup --gid ${GROUP_ID} qcontrollerd; \
+        addgroup --gid ${GROUP_ID} qcontrollerd; \
     fi && \
     adduser --uid ${USER_ID} --gid ${GROUP_ID} --disabled-password --gecos "" qcontrollerd
 
