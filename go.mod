@@ -1,6 +1,6 @@
 module github.com/q-controller/qcontroller
 
-go 1.24.3
+go 1.24.6
 
 replace github.com/q-controller/network-utils => ./network-utils
 
