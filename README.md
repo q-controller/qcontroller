@@ -1,3 +1,5 @@
+![Build](https://github.com/q-controller/qcontroller/actions/workflows/build.yml/badge.svg)
+
 # QEMU VM Controller
 
 **QEMU VM Controller** (or `qcontroller`) is a flexible, API-driven tool for managing QEMU-based virtual machine instances on Linux and macOS. It is designed for users who need precise control over VM networking, image management, and orchestration—whether for local development, testing, or reproducible infrastructure setups.
@@ -36,6 +38,7 @@ Operations are defined using [Protocol Buffers](/src/protos/) and exposed via bo
 To build the binary, run:
 
 ```bash
+make install-tools
 make
 ```
 
@@ -96,7 +99,7 @@ Use the provided [Dockerfile](/Dockerfile) to ensure a consistent dev environmen
 
 To run commands inside the container:
 ```shell
-./exec.sh "make lint"
+./exec.sh make lint
 ```
 
 This wraps the environment with all Go tools and build dependencies preinstalled.
