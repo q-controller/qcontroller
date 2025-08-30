@@ -6,8 +6,6 @@ trap cleanup SIGINT SIGTERM ERR EXIT
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)
 
-DOCKERFILE=$(mktemp)
-
 cleanup() {
     local exit_code=$?
     exit "$exit_code"
@@ -36,5 +34,5 @@ docker run --rm -it -v "${script_dir}:${script_dir}" \
     -e GOCACHE=${CACHE_DIR}/.go \
     -e GOMODCACHE=${CACHE_DIR}/.go-mod-cache \
     -e GOOS=${GOOS} \
-    $(docker build -q -t buf --target pre-build . -f Dockerfile --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)) \
-    bash -c "$@"
+    $(docker build -q --target pre-build . -f Dockerfile --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)) \
+    $@
