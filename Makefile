@@ -5,6 +5,9 @@ GEN_DIR=src/generated
 
 all: qcontrollerd
 
+install-tools:
+	./prepare.sh
+
 clean:
 	rm -fr ${BUILD_DIR}
 	rm -fr ${GEN_DIR}
@@ -12,11 +15,15 @@ clean:
 update:
 	buf dep update
 
-lint:
+lint: generate
 	buf lint
 	golangci-lint run
 
-generate:
+update-submodules:
+	git submodule update --init
+	cd qapi-client && git submodule update --init
+
+generate: update-submodules
 	mkdir -p ${BUILD_DIR}
 	./qapi-client/generate.sh --schema qapi-client/qemu/qapi/qapi-schema.json --out-dir ${GEN_DIR} --package qapi
 	./qapi-client/generate.sh --schema qapi-client/qemu/qga/qapi-schema.json --out-dir ${GEN_DIR} --package qga
