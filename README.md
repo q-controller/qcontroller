@@ -82,6 +82,12 @@ packer init .
 packer build .
 ```
 
+Default values are configured for Linux on x86_64. If you're using a different platform, you'll need to adjust these settings. For example, on macOS with Apple Silicon, build the image using:
+
+```shell
+packer build -var arch=arm64 -var machine=virt -var accelerator=hvf .
+```
+
 See [qga](/qga/README.md) for details on building QGA.
 
 ## 📎 API Access
