@@ -22,14 +22,9 @@ variable "vm_name" {
   default = "base"
 }
 
-variable "iso_url" {
-  type    = string
-  default = "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
-}
-
 variable "iso_checksum" {
   type    = string
-  default = "file:https://cloud-images.ubuntu.com/releases/24.04/release/SHA256SUMS"
+  default = "file:https://cloud-images.ubuntu.com/releases/25.04/release/SHA256SUMS"
 }
 
 variable "username" {
@@ -42,19 +37,24 @@ variable "password" {
   default = "packer"
 }
 
-variable "qemu_binary" {
+variable "arch" {
   type    = string
-  default = "qemu-system-x86_64"
+  default = "amd64"
 }
 
 locals {
+  iso_url         = "https://cloud-images.ubuntu.com/releases/25.04/release/ubuntu-25.04-server-cloudimg-${var.arch}.img"
+  qemu_binary     = var.arch == "arm64" ? "qemu-system-aarch64" : "qemu-system-x86_64"
   build_timestamp = timestamp()
   build_directory = "build/${local.build_timestamp}"
+
+  # Architecture-specific arguments
+  arm64_args = var.arch == "arm64" ? [["-bios", "edk2-aarch64-code.fd"]] : []
 }
 
 source "qemu" "base" {
   vm_name          = var.vm_name
-  iso_url          = var.iso_url
+  iso_url          = local.iso_url
   iso_checksum     = var.iso_checksum
   disk_image       = true
   format           = "qcow2"
@@ -64,11 +64,10 @@ source "qemu" "base" {
   cpus             = 4
   memory           = "4096"
   headless         = true
-  ssh_port         = 22
   ssh_username     = var.username
   ssh_password     = var.password
   ssh_timeout      = "900s"
-  qemu_binary      = var.qemu_binary
+  qemu_binary      = local.qemu_binary
   http_content = {
     "/meta-data" = <<EOF
 EOF
@@ -111,10 +110,10 @@ runcmd:
   - netplan apply
 EOF
   }
-  qemuargs = [
+  qemuargs = concat([
     ["-cpu", "host"],
     ["-smbios", "type=1,serial=ds=nocloud-net;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/"]
-  ]
+  ], local.arm64_args)
   shutdown_command = "sudo -S shutdown -P now"
 }
 
