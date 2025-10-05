@@ -122,7 +122,8 @@ This wraps the environment with all Go tools and build dependencies preinstalled
 
 ## Runtime Dependencies
 
-- `qemu-system-x86_64` (currently, only x86_64 VMs are supported and tested)
+- `qemu-system-x86_64` (x86_64 VMs are supported and tested)
+- `qemu-system-aarch64` (ARM64 VMs are supported and tested)
 
 ## 🔧 Networking Notes
 
