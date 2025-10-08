@@ -143,3 +143,16 @@ func NewInstanceMonitor() (*InstanceMonitor, error) {
 
 	return mon, nil
 }
+
+// Close properly shuts down the monitor and releases all resources
+func (i *InstanceMonitor) Close() error {
+	// Signal the monitor goroutine to stop
+	close(i.readyCh)
+
+	// Close all connections via the qapi client
+	if i.qapi != nil {
+		return i.qapi.Close()
+	}
+
+	return nil
+}

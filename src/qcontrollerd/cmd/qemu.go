@@ -1,15 +1,20 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
+	"github.com/q-controller/qcontroller/src/pkg/qemu/process"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -47,17 +52,65 @@ var qemuCmd = &cobra.Command{
 		}()
 
 		s := grpc.NewServer()
-		defer s.Stop()
+		defer func() {
+			// Create a deadline for graceful shutdown
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
 
-		reg, regErr := protos.NewQemuService(config)
+			// Give ongoing operations a chance to complete
+			done := make(chan struct{})
+			go func() {
+				s.GracefulStop() // Stop accepting new requests, let existing ones finish
+				close(done)
+			}()
+
+			// Wait for graceful shutdown or timeout
+			select {
+			case <-shutdownCtx.Done():
+				slog.Warn("Graceful shutdown timed out, forcing stop")
+				s.Stop()
+			case <-done:
+				slog.Info("Graceful shutdown completed")
+			}
+		}()
+
+		monitor, monitorErr := process.NewInstanceMonitor()
+		if monitorErr != nil {
+			return monitorErr
+		}
+		defer func() {
+			if err := monitor.Close(); err != nil {
+				slog.Error("Error closing monitor", "error", err)
+			}
+		}()
+
+		reg, regErr := protos.NewQemuService(monitor, config)
 		if regErr != nil {
 			return fmt.Errorf("failed to create server %w", regErr)
 		}
 		servicesv1.RegisterQemuServiceServer(s, reg)
 
-		if servErr := s.Serve(lis); servErr != nil {
-			return fmt.Errorf("failed to serve: %w", servErr)
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+
+		// Server error channel
+		errCh := make(chan error, 1)
+
+		// Start server in background
+		go func() {
+			if err := s.Serve(lis); err != nil {
+				errCh <- err
+			}
+		}()
+
+		// Wait for signal or error
+		select {
+		case <-stop:
+			slog.Info("Shutting down gRPC server due to signal...")
+		case err := <-errCh:
+			return err
 		}
+
 		return nil
 	},
 }
