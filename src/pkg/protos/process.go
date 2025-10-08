@@ -47,6 +47,8 @@ func (q *QemuServer) Start(ctx context.Context,
 	if req.Pid != nil {
 		if inst, instErr := qemu.Attach(req.Config.Id, int(*req.Pid)); instErr == nil {
 			qemuInstance = inst
+		} else {
+			return nil, status.Errorf(codes.Internal, "method Start failed [instance: %s, err: %v]", id, instErr)
 		}
 	}
 
@@ -227,12 +229,7 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 	}, nil
 }
 
-func NewQemuService(config *settingsv1.QemuConfig) (servicesv1.QemuServiceServer, error) {
-	monitor, monitorErr := process.NewInstanceMonitor()
-	if monitorErr != nil {
-		return nil, monitorErr
-	}
-
+func NewQemuService(monitor *process.InstanceMonitor, config *settingsv1.QemuConfig) (servicesv1.QemuServiceServer, error) {
 	q := &QemuServer{
 		instances: map[string]*process.Item{},
 		monitor:   monitor,
