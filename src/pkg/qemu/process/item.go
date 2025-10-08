@@ -1,6 +1,8 @@
 package process
 
 import (
+	"fmt"
+
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	"github.com/q-controller/qemu-client/pkg/qemu"
 )
@@ -28,20 +30,18 @@ func CreateItem(id string, instance *qemu.Instance) (*Item, error) {
 		for {
 			select {
 			case ch, ok := <-item.add:
-				if ok {
-					item.subscribers[ch] = struct{}{}
-					ch <- &servicesv1.Event{
-						Id: id,
-						EventKind: &servicesv1.Event_Status{
-							Status: &servicesv1.Status{
-								Running: true,
-							},
-						},
-					}
-				} else {
-					delete(item.subscribers, ch)
+				if !ok {
+					panic(fmt.Sprintf("item.add channel unexpectedly closed for instance %s", id))
 				}
-				continue Loop
+				item.subscribers[ch] = struct{}{}
+				ch <- &servicesv1.Event{
+					Id: id,
+					EventKind: &servicesv1.Event_Status{
+						Status: &servicesv1.Status{
+							Running: true,
+						},
+					},
+				}
 			case <-item.Instance.Done:
 				break Loop
 			}
