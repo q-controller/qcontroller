@@ -199,11 +199,11 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 	for _, id := range request.Ids {
 		ipaddresses := []string{}
 		if req, reqErr := qga.PrepareGuestNetworkGetInterfacesRequest(); reqErr == nil {
-			if resCh, resErr := q.monitor.Execute(fmt.Sprintf("%s:%s", process.PREFIX_QGA, id), client.Request(*req)); resErr == nil {
-				res := <-resCh
-				if res.Raw.Return != nil {
+			if execRes, resErr := q.monitor.Execute(fmt.Sprintf("%s:%s", process.PREFIX_QGA, id), client.Request(*req)); resErr == nil {
+				res, resOk := execRes.Get(ctx, -1)
+				if resOk && res.Return != nil {
 					var networkInterfaces qga.GuestNetworkInterfaceList
-					if unmarshalErr := json.Unmarshal(res.Raw.Return, &networkInterfaces); unmarshalErr == nil {
+					if unmarshalErr := json.Unmarshal(res.Return, &networkInterfaces); unmarshalErr == nil {
 						for _, networkInterface := range networkInterfaces {
 							if networkInterface.IpAddresses != nil {
 								for _, ipaddress := range *networkInterface.IpAddresses {

@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/q-controller/qapi-client/src/client"
+	"github.com/q-controller/qapi-client/src/monitor"
 	"github.com/q-controller/qcontroller/src/generated/qapi"
 	"github.com/q-controller/qcontroller/src/generated/qga"
 )
@@ -32,15 +34,19 @@ type Status struct {
 }
 
 type InstanceMonitor struct {
-	qapi    *client.Monitor
+	qapi    *monitor.Monitor
 	ready   map[string]bool
 	readyCh chan Status
 }
 
-func (i *InstanceMonitor) Execute(name string, request client.Request) (<-chan client.Result, error) {
+func (i *InstanceMonitor) Execute(name string, request client.Request) (*monitor.ExecuteResult, error) {
 	ready, exists := i.ready[name]
 	if exists && ready {
-		return i.qapi.Execute(name, request)
+		res, resErr := i.qapi.Execute(name, request)
+		if resErr != nil {
+			return nil, resErr
+		}
+		return res, nil
 	}
 
 	return nil, ErrNotReady
@@ -56,9 +62,11 @@ func (i *InstanceMonitor) Add(id, socketPath, prefix string, retryCount int, int
 	}
 	for range retryCount {
 		if addErr := i.qapi.Add(name, socketPath); addErr != nil {
-			slog.Error("Could not add instance", "instance", name, "error", addErr)
-			time.Sleep(time.Duration(intervalMs) * time.Millisecond)
-			continue
+			if err, errOk := <-addErr; errOk && err != nil {
+				slog.Error("Could not add instance", "instance", name, "error", err)
+				time.Sleep(time.Duration(intervalMs) * time.Millisecond)
+				continue
+			}
 		}
 
 		slog.Info("Added new instance", "instance", name)
@@ -96,7 +104,7 @@ func (i *InstanceMonitor) Delete(id, prefix string) error {
 }
 
 func NewInstanceMonitor() (*InstanceMonitor, error) {
-	qapiClient, qapiErr := client.NewMonitor()
+	qapiClient, qapiErr := monitor.NewMonitor()
 	if qapiErr != nil {
 		return nil, qapiErr
 	}
@@ -108,7 +116,7 @@ func NewInstanceMonitor() (*InstanceMonitor, error) {
 	}
 
 	go func() {
-		qapiChan := qapiClient.Start()
+		qapiChan := qapiClient.Messages()
 		for {
 			select {
 			case status, ok := <-mon.readyCh:
@@ -129,8 +137,8 @@ func NewInstanceMonitor() (*InstanceMonitor, error) {
 					if err := json.Unmarshal(msg.Generic, &greeting); err == nil {
 						if req, reqErr := qapi.PrepareQmpCapabilitiesRequest(qapi.QObjQmpCapabilitiesArg{}); reqErr == nil {
 							if ch, chErr := qapiClient.Execute(msg.Instance, client.Request(*req)); chErr == nil {
-								res := <-ch
-								if res.Raw.Return != nil {
+								res, resOk := ch.Get(context.Background(), -1)
+								if resOk && res.Return != nil {
 									mon.ready[msg.Instance] = true
 								}
 							}
