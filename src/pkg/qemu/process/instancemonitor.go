@@ -73,15 +73,7 @@ func (i *InstanceMonitor) Add(id, socketPath, prefix string, retryCount int, int
 
 		if prefix == PREFIX_QGA {
 			go func() {
-				if req, reqErr := qga.PrepareGuestPingRequest(); reqErr == nil {
-					if ch, chErr := i.qapi.Execute(name, client.Request(*req)); chErr == nil {
-						<-ch
-						i.readyCh <- Status{
-							Id:    name,
-							Ready: true,
-						}
-					}
-				}
+				i.PingQga(name, 6, 5*time.Second, 8*time.Second)
 			}()
 		}
 
@@ -101,6 +93,43 @@ func (i *InstanceMonitor) Delete(id, prefix string) error {
 	}
 
 	return nil
+}
+
+func (i *InstanceMonitor) PingQga(name string, maxAttempts int, timeout, maxDelay time.Duration) {
+	const initialDelay = 500 * time.Millisecond
+	delay := initialDelay
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		slog.Info("Pinging QGA", "instance", name, "attempt", attempt)
+		if req, reqErr := qga.PrepareGuestPingRequest(); reqErr == nil {
+			if execResult, chErr := i.qapi.Execute(name, client.Request(*req)); chErr == nil {
+				if _, ok := execResult.Get(context.Background(), timeout); !ok {
+					if cancelErr := i.qapi.Cancel(req.Id); cancelErr != nil {
+						slog.Error("Failed to cancel QGA request", "instance", name, "error", cancelErr)
+					}
+				} else {
+					i.ready[name] = true
+					i.readyCh <- Status{
+						Id:    name,
+						Ready: true,
+					}
+
+					slog.Info("QGA is ready", "instance", name)
+					return
+				}
+			}
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(delay)
+			delay *= 2
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		}
+	}
+
+	slog.Warn("QGA ping failed", "instance", name, "attempt", maxAttempts)
 }
 
 func NewInstanceMonitor() (*InstanceMonitor, error) {
