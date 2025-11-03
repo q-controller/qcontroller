@@ -100,7 +100,7 @@ write_files:
         ethernets:
           any-eth:
             match:
-              name: "*"
+              name: "en*"
             dhcp4: true
             dhcp6: false
             optional: true
