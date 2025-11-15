@@ -237,7 +237,7 @@ func NewQemuService(monitor *process.InstanceMonitor, config *settingsv1.QemuCon
 	}
 
 	if linuxSettings := config.GetLinuxSettings(); linuxSettings != nil {
-		nm, nmErr := network.NewNetworkManager(linuxSettings.Bridge.Name, linuxSettings.Bridge.Subnet)
+		nm, nmErr := network.NewNetworkManager(linuxSettings.Network.Name, linuxSettings.Network.BridgeIp)
 		if nmErr != nil {
 			return nil, nmErr
 		}

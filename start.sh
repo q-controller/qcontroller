@@ -5,7 +5,10 @@ set -Eeuo pipefail
 trap cleanup SIGINT SIGTERM ERR EXIT
 
 INTERFACE_NAME=br0
-SUBNET=192.168.71.0/24
+HOST_IP=192.168.71.1/24
+BRIDGE_IP=192.168.71.3/24
+START=192.168.71.4/24
+END=192.168.71.254/24
 CONTROLLER_PORT=8009
 QEMU_PORT=8008
 GATEWAY_PORT=8080
@@ -29,7 +32,9 @@ Available options:
 --bin           Path to qcontrollerd binary
 --rundir        Path to the rundir
 --interface     Interface name [default: ${INTERFACE_NAME}] (Linux only)
---cidr          Subnet [default: ${SUBNET}] (Linux only)
+--cidr          Gateway CIDR [default: ${GATEWAY}] (Linux only)
+--start         Start of DHCP range (Linux only) [default: ${START}]
+--end           End of DHCP range (Linux only) [default: ${END}]
 EOF
     exit
 }
@@ -62,7 +67,19 @@ parse_params() {
                 ;;
             --cidr)
                 if [[ "$OS_TYPE" == "Linux" ]]; then
-                    SUBNET="${2-}"
+                    GATEWAY="${2-}"
+                fi
+                shift
+                ;;
+            --start)
+                if [[ "$OS_TYPE" == "Linux" ]]; then
+                    START="${2-}"
+                fi
+                shift
+                ;;
+            --end)
+                if [[ "$OS_TYPE" == "Linux" ]]; then
+                    END="${2-}"
                 fi
                 shift
                 ;;
@@ -103,9 +120,17 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
 {
     "port": "${QEMU_PORT}",
     "linuxSettings": {
-        "bridge": {
+        "network": {
             "name": "${INTERFACE_NAME}",
-            "subnet": "${SUBNET}"
+            "gateway_ip": "${HOST_IP}",
+            "bridge_ip": "${BRIDGE_IP}",
+            "dhcp": {
+                "start": "${START}",
+                "end": "${END}",
+                "lease_time": 86400,
+                "dns": ["8.8.8.8", "8.8.4.4"],
+                "lease_file": "${RUNDIR}/qcontroller-dhcp-leases"
+            }
         }
     }
 }
@@ -125,7 +150,7 @@ cat >${CONFIGDIR}/controller-config.json <<EOF
         "root": "cache"
     },
     "root": "${ROOTDIR}",
-    "qemuEndpoint": "localhost:${QEMU_PORT}"
+    "qemuEndpoint": "$(echo "${BRIDGE_IP}" | cut -d'/' -f1):${QEMU_PORT}"
 }
 EOF
 
