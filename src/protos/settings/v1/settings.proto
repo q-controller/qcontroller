@@ -14,14 +14,23 @@ message Cache {
     string root = 1;
 }
 
-message Bridge {
+message Dhcp {
+    string start = 1;
+    string end = 2;
+    repeated string dns = 3;
+    int64 lease_time = 4;
+    string lease_file = 5;
+}
+
+message Network {
     string name = 1;
-    string subnet = 2;
-    string gateway = 3;
+    string gateway_ip = 2;
+    string bridge_ip = 3;
+    Dhcp dhcp = 4;
 }
 
 message LinuxSettings {
-    Bridge bridge = 1;
+    Network network = 1;
 }
 
 message ControllerConfig {
