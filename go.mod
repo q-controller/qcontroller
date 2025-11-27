@@ -8,6 +8,8 @@ replace github.com/q-controller/qemu-client => ./qemu-client
 
 replace github.com/q-controller/qapi-client => ./qapi-client
 
+replace github.com/coredhcp/coredhcp => github.com/krjakbrjak/coredhcp v0.0.0-20251128103901-a2aa0dc11269
+
 require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.0
