@@ -164,6 +164,11 @@ func NewInstanceMonitor() (*InstanceMonitor, error) {
 				if msg.Generic != nil {
 					var greeting Greeting
 					if err := json.Unmarshal(msg.Generic, &greeting); err == nil {
+						// Verify that the unmarshaled greeting has the expected QMP structure
+						if greeting.QMP.Version.Qemu.Major == 0 && greeting.QMP.Version.Qemu.Minor == 0 && greeting.QMP.Version.Qemu.Micro == 0 {
+							continue // Invalid greeting structure
+						}
+
 						if req, reqErr := qapi.PrepareQmpCapabilitiesRequest(qapi.QObjQmpCapabilitiesArg{}); reqErr == nil {
 							if ch, chErr := qapiClient.Execute(msg.Instance, client.Request(*req)); chErr == nil {
 								res, resOk := ch.Get(context.Background(), -1)
