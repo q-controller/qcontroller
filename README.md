@@ -124,9 +124,3 @@ This wraps the environment with all Go tools and build dependencies preinstalled
 
 - `qemu-system-x86_64` (x86_64 VMs are supported and tested)
 - `qemu-system-aarch64` (ARM64 VMs are supported and tested)
-
-## 🔧 Networking Notes
-
-On Linux, a DHCP server is required for automated VM networking (e.g., bridge + TAP). For setup and an example configuration, see [dhcp](/dhcp/README.md).
-
-> **Note**: DHCP is not bundled with this project to give users the freedom to plug into their existing setup
