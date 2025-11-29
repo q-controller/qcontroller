@@ -143,6 +143,11 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
 EOF
 fi
 
+QEMU_HOST="$(echo "${BRIDGE_IP}" | cut -d'/' -f1)"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    QEMU_HOST="localhost"
+fi
+
 cat >${CONFIGDIR}/controller-config.json <<EOF
 {
     "port": ${CONTROLLER_PORT},
@@ -150,7 +155,7 @@ cat >${CONFIGDIR}/controller-config.json <<EOF
         "root": "cache"
     },
     "root": "${ROOTDIR}",
-    "qemuEndpoint": "$(echo "${BRIDGE_IP}" | cut -d'/' -f1):${QEMU_PORT}"
+    "qemuEndpoint": "${QEMU_HOST}:${QEMU_PORT}"
 }
 EOF
 
