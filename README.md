@@ -33,9 +33,32 @@ Operations are defined using [Protocol Buffers](/src/protos/) and exposed via bo
 
 ## 🚀 Getting Started
 
-### Build Instructions
+### macOS Package Installation
 
-To build the binary, run:
+For macOS users, we provide a convenient installer package that handles service setup automatically:
+
+```bash
+# Build the macOS package
+./build-macos-pkg.sh
+
+# Install the package (creates system services)
+sudo installer -pkg build/qcontrollerd.pkg -target /
+```
+
+This will:
+- Install `qcontrollerd` to `/usr/local/bin/`
+- Create LaunchDaemon (system service) for QEMU
+- Create LaunchAgent (user services) for controller and gateway
+- Auto-start all services after installation
+
+To uninstall:
+```bash
+sudo /usr/local/share/com.github.qcontroller.qcontrollerd/uninstall.sh
+```
+
+### Manual Build Instructions
+
+To build the binary manually, run:
 
 ```bash
 make install-tools
@@ -54,11 +77,16 @@ The compiled binary provides the following subcommands:
 > It's important to note that the application was split into two  components: the controller and QEMU. This separation was necessary because the qemu command requires elevated privileges due to its use of networking features such as TAP on Linux and vmnet on macOS.
 > To avoid granting elevated rights to the entire application, a minimal QEMU service was created. This service runs as root and is responsible solely for executing the qemu command. The controller, on the other hand, manages the virtual machine lifecycle and runs as a non-root user, ensuring a more secure and controlled execution environment.
 
-Running the App
+### Running the App
 
+#### Packaged Installation (macOS)
+If you installed via the macOS package, services are automatically started and managed by launchd. Access the API at:
+- Swagger UI: `http://localhost:8080/v1/swagger/index.html`
+
+#### Manual Execution
 Each subcommand expects a JSON configuration file matching its Protobuf [definitions](/src/protos/settings/v1/settings.proto).
 
-All subcommands must run concurrently; orchestration (e.g., via `systemd` on Linux) is recommended. A [startup script](/start.sh) is provided to run all required components together
+All subcommands must run concurrently; orchestration (e.g., via `systemd` on Linux) is recommended. A [startup script](/start.sh) is provided to run all required components together:
 ```shell
 bash start.sh -h
 ```
