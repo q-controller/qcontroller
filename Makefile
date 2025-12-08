@@ -30,4 +30,4 @@ generate: update-submodules
 	buf generate
 
 qcontrollerd: generate
-	go build -o ${BUILD_DIR}/qcontrollerd src/qcontrollerd/main.go
+	./build.sh
