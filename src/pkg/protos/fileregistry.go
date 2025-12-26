@@ -1,12 +1,15 @@
 package protos
 
 import (
+	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
@@ -19,8 +22,15 @@ const chunkSize = 1024 * 64 // 64 KB
 
 type FileRegistry struct {
 	servicesv1.UnimplementedFileRegistryServiceServer
-	root    string
-	tempDir string
+	root         string
+	tempDir      string
+	metadataFile string
+	mu           sync.RWMutex
+}
+
+type ImageMetadata struct {
+	ImageID string `json:"image_id"`
+	Hash    string `json:"hash"`
 }
 
 func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.UploadImageRequest, servicesv1.UploadImageResponse]) error {
@@ -49,9 +59,19 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 				return status.Errorf(codes.Internal, "failed to close file: %v", closeErr)
 			}
 
-			finalPath := fmt.Sprintf("%s/%s", f.root, utils.Hash(fileID))
+			hash := utils.Hash(fileID)
+			finalPath := fmt.Sprintf("%s/%s", f.root, hash)
 			if err := utils.CopyFile(tmpFilePath, finalPath); err != nil {
 				return err
+			}
+
+			// Save metadata mapping
+			if err := f.saveImageMetadata(fileID, hash); err != nil {
+				// Cleanup the file if metadata save fails
+				if rmErr := os.Remove(finalPath); rmErr != nil {
+					slog.Error("failed to cleanup file after metadata save failure", "error", rmErr)
+				}
+				return status.Errorf(codes.Internal, "failed to save metadata: %v", err)
 			}
 
 			return stream.SendAndClose(&servicesv1.UploadImageResponse{
@@ -134,6 +154,45 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 	return nil
 }
 
+func (f *FileRegistry) RemoveImage(ctx context.Context, req *servicesv1.RemoveImageRequest) (*servicesv1.RemoveImageResponse, error) {
+	hash, exists := f.getImageHash(req.ImageId)
+	if !exists {
+		return &servicesv1.RemoveImageResponse{
+			Removed: false,
+		}, nil
+	}
+
+	imagePath := fmt.Sprintf("%s/%s", f.root, hash)
+	if err := os.Remove(imagePath); err != nil {
+		if os.IsNotExist(err) {
+			return &servicesv1.RemoveImageResponse{
+				Removed: false,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to remove image %q: %w", req.ImageId, err)
+	}
+
+	// Remove from metadata
+	if err := f.removeImageMetadata(req.ImageId); err != nil {
+		slog.Warn("failed to remove metadata for image", "image_id", req.ImageId, "error", err)
+	}
+
+	return &servicesv1.RemoveImageResponse{
+		Removed: true,
+	}, nil
+}
+
+func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImagesRequest) (*servicesv1.ListImagesResponse, error) {
+	imageIDs, err := f.getAllImageIDs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image list: %w", err)
+	}
+
+	return &servicesv1.ListImagesResponse{
+		Images: imageIDs,
+	}, nil
+}
+
 func NewFileRegistry(root string) (servicesv1.FileRegistryServiceServer, error) {
 	path, pathErr := os.MkdirTemp("", "fileregistry-*")
 	if pathErr != nil {
@@ -144,5 +203,99 @@ func NewFileRegistry(root string) (servicesv1.FileRegistryServiceServer, error) 
 		return nil, err
 	}
 
-	return &FileRegistry{root: root, tempDir: path}, nil
+	metadataFile := filepath.Join(root, "metadata.json")
+	return &FileRegistry{
+		root:         root,
+		tempDir:      path,
+		metadataFile: metadataFile,
+	}, nil
+}
+
+// Helper methods for metadata management
+
+func (f *FileRegistry) loadMetadata() (map[string]string, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	data, err := os.ReadFile(f.metadataFile)
+	if os.IsNotExist(err) {
+		return make(map[string]string), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var metadata []ImageMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return nil, err
+	}
+
+	mapping := make(map[string]string)
+	for _, item := range metadata {
+		mapping[item.ImageID] = item.Hash
+	}
+	return mapping, nil
+}
+
+func (f *FileRegistry) saveMetadata(mapping map[string]string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	metadata := make([]ImageMetadata, 0, len(mapping))
+	for imageID, hash := range mapping {
+		metadata = append(metadata, ImageMetadata{
+			ImageID: imageID,
+			Hash:    hash,
+		})
+	}
+
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(f.metadataFile, data, 0644)
+}
+
+func (f *FileRegistry) saveImageMetadata(imageID, hash string) error {
+	mapping, err := f.loadMetadata()
+	if err != nil {
+		return err
+	}
+
+	mapping[imageID] = hash
+	return f.saveMetadata(mapping)
+}
+
+func (f *FileRegistry) removeImageMetadata(imageID string) error {
+	mapping, err := f.loadMetadata()
+	if err != nil {
+		return err
+	}
+
+	delete(mapping, imageID)
+	return f.saveMetadata(mapping)
+}
+
+func (f *FileRegistry) getImageHash(imageID string) (string, bool) {
+	mapping, err := f.loadMetadata()
+	if err != nil {
+		return "", false
+	}
+
+	hash, exists := mapping[imageID]
+	return hash, exists
+}
+
+func (f *FileRegistry) getAllImageIDs() ([]string, error) {
+	mapping, err := f.loadMetadata()
+	if err != nil {
+		return nil, err
+	}
+
+	imageIDs := make([]string, 0, len(mapping))
+	for imageID := range mapping {
+		imageIDs = append(imageIDs, imageID)
+	}
+	return imageIDs, nil
 }
