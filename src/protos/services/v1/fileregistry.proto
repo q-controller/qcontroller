@@ -22,7 +22,24 @@ message DownloadImageResponse {
     bytes chunk = 1;
 }
 
+message RemoveImageRequest {
+    string image_id = 1;
+}
+
+message RemoveImageResponse {
+    bool removed = 1;
+}
+
+message ListImagesRequest {
+}
+
+message ListImagesResponse {
+    repeated string images = 1;
+}
+
 service FileRegistryService {
     rpc UploadImage(stream UploadImageRequest) returns (UploadImageResponse) {}
     rpc DownloadImage(DownloadImageRequest) returns (stream DownloadImageResponse) {}
+    rpc RemoveImage(RemoveImageRequest) returns (RemoveImageResponse) {}
+    rpc ListImages(ListImagesRequest) returns (ListImagesResponse) {}
 }
