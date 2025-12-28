@@ -10,7 +10,6 @@ import (
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	"github.com/q-controller/qcontroller/src/pkg/images/storage"
-	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -100,10 +99,6 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 	}
 
 	if !exists {
-		// If not found and looks like HTTP URL, try downloading
-		if utils.IsHTTP(req.ImageId) {
-			return f.downloadAndStoreImage(req.ImageId, stream)
-		}
 		return status.Errorf(codes.NotFound, "image not found: %s", req.ImageId)
 	}
 
@@ -126,56 +121,6 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 				break
 			}
 			return status.Errorf(codes.Internal, "error reading file: %v", err)
-		}
-
-		resp := &servicesv1.DownloadImageResponse{
-			Chunk: buffer[:n],
-		}
-
-		if sendErr := stream.Send(resp); sendErr != nil {
-			return status.Errorf(codes.Internal, "failed to send chunk: %v", sendErr)
-		}
-	}
-
-	return nil
-}
-
-func (f *FileRegistry) downloadAndStoreImage(imageURL string, stream grpc.ServerStreamingServer[servicesv1.DownloadImageResponse]) error {
-	// Create a temporary file for downloading
-	tmpFile, err := os.CreateTemp(f.tempDir, "download-*")
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to create temp file: %v", err)
-	}
-	defer func() {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpFile.Name())
-	}()
-
-	// Download the image
-	if err := utils.DownloadFile(imageURL, tmpFile.Name()); err != nil {
-		return status.Errorf(codes.Internal, "failed to download image: %v", err)
-	}
-
-	// Store using storage backend (it handles hashing internally)
-	if _, err := tmpFile.Seek(0, 0); err != nil {
-		return status.Errorf(codes.Internal, "failed to seek temp file: %v", err)
-	}
-	if err := f.storage.Store(imageURL, tmpFile); err != nil {
-		return status.Errorf(codes.Internal, "failed to store downloaded image: %v", err)
-	}
-
-	// Now stream the file back
-	if _, err := tmpFile.Seek(0, 0); err != nil {
-		return status.Errorf(codes.Internal, "failed to seek temp file: %v", err)
-	}
-	buffer := make([]byte, chunkSize)
-	for {
-		n, err := tmpFile.Read(buffer)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return status.Errorf(codes.Internal, "error reading downloaded file: %v", err)
 		}
 
 		resp := &servicesv1.DownloadImageResponse{
