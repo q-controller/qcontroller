@@ -1,0 +1,13 @@
+package images
+
+import (
+	"context"
+	"mime/multipart"
+)
+
+type ImageClient interface {
+	Upload(ctx context.Context, name string, file multipart.File) error
+	Download(ctx context.Context, id, path string) (retErr error)
+	Remove(ctx context.Context, id string) error
+	List(ctx context.Context) ([]string, error)
+}
