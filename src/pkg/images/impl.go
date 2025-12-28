@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
+	"path/filepath"
 
 	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 )
@@ -51,6 +52,11 @@ func (h *imageClientImpl) Upload(ctx context.Context, name string, file multipar
 }
 
 func (h *imageClientImpl) Download(ctx context.Context, id, path string) (retErr error) {
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
 	file, fileErr := os.Create(path)
 	if fileErr != nil {
 		return fileErr

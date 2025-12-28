@@ -9,9 +9,9 @@ import (
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
-	pkgController "github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
 	"github.com/q-controller/qcontroller/src/pkg/controller/vm"
+	"github.com/q-controller/qcontroller/src/pkg/images"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -41,7 +41,6 @@ func (s *Server) Create(ctx context.Context, request *servicesv1.CreateRequest) 
 
 	if request.Start {
 		if startErr := s.manager.Start(request.Name); startErr != nil {
-			slog.Error("failed to start an instance", "error", startErr)
 			return nil, status.Errorf(codes.Unknown, "failed to start a VM instance")
 		}
 	}
@@ -78,7 +77,7 @@ func (s *Server) Info(ctx context.Context, request *servicesv1.InfoRequest) (*se
 	}, nil
 }
 
-func NewController(settings *settingsv1.ControllerConfig, fetcher pkgController.Fetcher) (servicesv1.ControllerServiceServer, error) {
+func NewController(settings *settingsv1.ControllerConfig, imageClient images.ImageClient) (servicesv1.ControllerServiceServer, error) {
 	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0755); mkdirErr != nil {
 		return nil, mkdirErr
 	}
@@ -88,7 +87,7 @@ func NewController(settings *settingsv1.ControllerConfig, fetcher pkgController.
 		return nil, stateErr
 	}
 
-	manager := vm.CreateManager(settings.Root, settings.QemuEndpoint, fetcher, state)
+	manager := vm.CreateManager(settings.Root, settings.QemuEndpoint, state, imageClient)
 	if manager == nil {
 		return nil, fmt.Errorf("failed to create a manager")
 	}

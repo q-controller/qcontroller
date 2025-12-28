@@ -1,15 +1,14 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 	"path/filepath"
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
@@ -37,43 +36,6 @@ func getDefaultConfig() *settingsv1.ControllerConfig {
 	return &settingsv1.ControllerConfig{
 		Port: 80000,
 	}
-}
-
-type localFetcher struct {
-	fileRegistry servicesv1.FileRegistryServiceServer
-}
-
-type downloadStream struct {
-	grpc.ServerStream
-	file *os.File
-}
-
-func (m *downloadStream) Send(resp *servicesv1.DownloadImageResponse) error {
-	_, err := m.file.Write(resp.Chunk)
-	return err
-}
-
-func (l *localFetcher) Get(id, path string) (retErr error) {
-	file, fileErr := os.Create(path)
-	if fileErr != nil {
-		return fileErr
-	}
-
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			if retErr == nil {
-				// Return close error if no other error
-				retErr = closeErr
-			} else {
-				retErr = errors.Join(retErr, closeErr)
-			}
-		}
-	}()
-
-	stream := &downloadStream{file: file}
-	return l.fileRegistry.DownloadImage(&servicesv1.DownloadImageRequest{
-		ImageId: id,
-	}, stream)
 }
 
 var controllerCmd = &cobra.Command{
@@ -104,9 +66,17 @@ var controllerCmd = &cobra.Command{
 		}
 		servicesv1.RegisterFileRegistryServiceServer(s, reg)
 
-		contr, contrErr := protos.NewController(config, &localFetcher{
-			fileRegistry: reg,
-		})
+		fileRegistryClient, clientErr := createFileRegistryClient(lis.Addr().String())
+		if clientErr != nil {
+			return fmt.Errorf("failed to create file registry client: %w", clientErr)
+		}
+
+		imageClient, imageClientErr := images.CreateImageClient(fileRegistryClient)
+		if imageClientErr != nil {
+			return fmt.Errorf("failed to create image client: %w", imageClientErr)
+		}
+
+		contr, contrErr := protos.NewController(config, imageClient)
 		if contrErr != nil {
 			return fmt.Errorf("failed to create server %w", contrErr)
 		}

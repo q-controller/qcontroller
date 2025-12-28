@@ -14,6 +14,7 @@ import (
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
+	"github.com/q-controller/qcontroller/src/pkg/images"
 	localUtils "github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/q-controller/qemu-client/pkg/utils"
 	"google.golang.org/grpc"
@@ -30,17 +31,17 @@ const (
 type Manager struct {
 	rootDir      string
 	instancesDir string
-	fetcher      controller.Fetcher
 	state        controller.State
 	mutex        sync.RWMutex
 
 	qemuConn *grpc.ClientConn
 	qemuCh   chan *servicesv1.Event
+
+	imageClient images.ImageClient
 }
 
 // NewManager creates a new VM provisioner.
-func newManager(rootDir string, qemuEndpoint string, fetcher controller.Fetcher,
-	state controller.State) (*Manager, error) {
+func newManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient) (*Manager, error) {
 	if _, statErr := os.Stat(rootDir); statErr != nil {
 		return nil, statErr
 	}
@@ -61,12 +62,12 @@ func newManager(rootDir string, qemuEndpoint string, fetcher controller.Fetcher,
 	}
 
 	manager := Manager{
-		fetcher:      fetcher,
 		state:        state,
 		rootDir:      rootDir,
 		instancesDir: instancesDir,
 		qemuCh:       make(chan *servicesv1.Event),
 		qemuConn:     conn,
+		imageClient:  imageClient,
 	}
 
 	// This can occur only during startup. Ensure
@@ -93,7 +94,7 @@ func newManager(rootDir string, qemuEndpoint string, fetcher controller.Fetcher,
 }
 
 // NewVMInstance creates a new VM instance with a state machine.
-func (m *Manager) Create(id, url string,
+func (m *Manager) Create(id, imageId string,
 	cpus uint32, memory, disk string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -102,13 +103,9 @@ func (m *Manager) Create(id, url string,
 		return fmt.Errorf("instance %s already exists", id)
 	}
 
-	instanceDir := filepath.Join(m.instancesDir, id)
-	if err := os.MkdirAll(instanceDir, 0777); err != nil {
-		return err
-	}
-	imageUrl := filepath.Join(instanceDir, "image")
-	if getErr := m.fetcher.Get(url, imageUrl); getErr != nil {
-		return getErr
+	imageUrl := filepath.Join(m.instanceDir(id), "image")
+	if downloadErr := m.imageClient.Download(context.Background(), imageId, imageUrl); downloadErr != nil {
+		return downloadErr
 	}
 
 	hwaddr, hwaddrErr := utils.GenerateRandomMAC()
@@ -216,10 +213,9 @@ func (m *Manager) Info(id string) ([]*servicesv1.Info, error) {
 var singleton *Manager
 var once sync.Once
 
-func CreateManager(rootDir string, qemuEndpoint string, fetcher controller.Fetcher,
-	state controller.State) *Manager {
+func CreateManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient) *Manager {
 	once.Do(func() {
-		mgr, mgrErr := newManager(rootDir, qemuEndpoint, fetcher, state)
+		mgr, mgrErr := newManager(rootDir, qemuEndpoint, state, imageClient)
 		if mgrErr != nil {
 			slog.Error("failed to create VM manager", "error", mgrErr)
 		}
@@ -264,7 +260,7 @@ func (m *Manager) eventLoop() {
 }
 
 func (m *Manager) startImpl(instance *vmv1.Instance) error {
-	instanceDir := filepath.Join(m.instancesDir, instance.Id)
+	instanceDir := m.instanceDir(instance.Id)
 	if err := os.MkdirAll(instanceDir, 0777); err != nil {
 		return err
 	}
@@ -332,4 +328,8 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 	}(startResp.Pid)
 
 	return nil
+}
+
+func (m *Manager) instanceDir(id string) string {
+	return filepath.Join(m.instancesDir, id)
 }
