@@ -2,8 +2,6 @@ package protos
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +10,7 @@ import (
 	"sync"
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	"github.com/q-controller/qcontroller/src/pkg/images/storage"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -22,21 +21,14 @@ const chunkSize = 1024 * 64 // 64 KB
 
 type FileRegistry struct {
 	servicesv1.UnimplementedFileRegistryServiceServer
-	root         string
-	tempDir      string
-	metadataFile string
-	mu           sync.RWMutex
-}
-
-type ImageMetadata struct {
-	ImageID string `json:"image_id"`
-	Hash    string `json:"hash"`
+	tempDir string
+	storage storage.StorageBackend
+	mu      sync.RWMutex
 }
 
 func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.UploadImageRequest, servicesv1.UploadImageResponse]) error {
 	var fileID string
 	var file *os.File
-	hasher := sha256.New()
 
 	tmpFilePath := ""
 	defer func() {
@@ -54,24 +46,19 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 				return status.Error(codes.InvalidArgument, "no data received")
 			}
 
-			// Finalize and verify hash
+			// Finalize file
 			if closeErr := file.Close(); closeErr != nil {
 				return status.Errorf(codes.Internal, "failed to close file: %v", closeErr)
 			}
 
-			hash := utils.Hash(fileID)
-			finalPath := fmt.Sprintf("%s/%s", f.root, hash)
-			if err := utils.CopyFile(tmpFilePath, finalPath); err != nil {
-				return err
+			tmpFile, reopenErr := os.Open(tmpFilePath)
+			if reopenErr != nil {
+				return status.Errorf(codes.Internal, "failed to reopen temp file: %v", reopenErr)
 			}
+			defer tmpFile.Close()
 
-			// Save metadata mapping
-			if err := f.saveImageMetadata(fileID, hash); err != nil {
-				// Cleanup the file if metadata save fails
-				if rmErr := os.Remove(finalPath); rmErr != nil {
-					slog.Error("failed to cleanup file after metadata save failure", "error", rmErr)
-				}
-				return status.Errorf(codes.Internal, "failed to save metadata: %v", err)
+			if err := f.storage.Store(fileID, tmpFile); err != nil {
+				return status.Errorf(codes.Internal, "failed to store file: %v", err)
 			}
 
 			return stream.SendAndClose(&servicesv1.UploadImageResponse{
@@ -92,43 +79,44 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 			tmpFile, tmpFileErr := os.OpenFile(filepath.Join(f.tempDir, fileID), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 			if tmpFileErr != nil {
 				if os.IsExist(tmpFileErr) {
-					return status.Errorf(codes.Internal, "Image with the same id is currently being uploaded")
+					return status.Errorf(codes.AlreadyExists, "Image with the same id is currently being uploaded")
 				}
-				return status.Errorf(codes.Internal, "failed to create temp file: %v", err)
+				return status.Errorf(codes.Internal, "failed to create temp file: %v", tmpFileErr)
 			}
 			file = tmpFile
 			tmpFilePath = tmpFile.Name()
 		}
 
-		// Write to file and hash
+		// Write to file
 		if _, err := file.Write(req.Chunk); err != nil {
 			return status.Errorf(codes.Internal, "failed to write to temp file: %v", err)
-		}
-		if _, err := hasher.Write(req.Chunk); err != nil {
-			return status.Errorf(codes.Internal, "failed to hash chunk: %v", err)
 		}
 	}
 }
 
 func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, stream grpc.ServerStreamingServer[servicesv1.DownloadImageResponse]) error {
-	imagePath := fmt.Sprintf("%s/%s", f.root, utils.Hash(req.ImageId))
-	_, statErr := os.Stat(imagePath)
-	if os.IsNotExist(statErr) && utils.IsHTTP(req.ImageId) {
-		if downloadErr := utils.DownloadFile(req.ImageId, imagePath); downloadErr != nil {
-			return downloadErr
+	// Check if image exists in storage
+	exists, existsErr := f.storage.Exists(req.ImageId)
+	if existsErr != nil {
+		return status.Errorf(codes.Internal, "failed to check image existence: %v", existsErr)
+	}
+
+	if !exists {
+		// If not found and looks like HTTP URL, try downloading
+		if utils.IsHTTP(req.ImageId) {
+			return f.downloadAndStoreImage(req.ImageId, stream)
 		}
-	} else if statErr != nil {
-		return statErr
+		return status.Errorf(codes.NotFound, "image not found: %s", req.ImageId)
 	}
 
-	file, err := os.Open(imagePath)
+	// Retrieve file from storage
+	file, err := f.storage.Retrieve(req.ImageId)
 	if err != nil {
-		return fmt.Errorf("failed to open image %q: %w", req.ImageId, err)
+		return status.Errorf(codes.Internal, "failed to retrieve image: %v", err)
 	}
-
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			slog.Error("failed to close file", "error", err)
+			slog.Error("failed to close file", "error", closeErr)
 		}
 	}()
 
@@ -139,7 +127,7 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 			if err == io.EOF {
 				break
 			}
-			return fmt.Errorf("error reading file: %w", err)
+			return status.Errorf(codes.Internal, "error reading file: %v", err)
 		}
 
 		resp := &servicesv1.DownloadImageResponse{
@@ -147,7 +135,53 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 		}
 
 		if sendErr := stream.Send(resp); sendErr != nil {
-			return fmt.Errorf("failed to send chunk: %w", sendErr)
+			return status.Errorf(codes.Internal, "failed to send chunk: %v", sendErr)
+		}
+	}
+
+	return nil
+}
+
+func (f *FileRegistry) downloadAndStoreImage(imageURL string, stream grpc.ServerStreamingServer[servicesv1.DownloadImageResponse]) error {
+	// Create a temporary file for downloading
+	tmpFile, err := os.CreateTemp(f.tempDir, "download-*")
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to create temp file: %v", err)
+	}
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+	}()
+
+	// Download the image
+	if err := utils.DownloadFile(imageURL, tmpFile.Name()); err != nil {
+		return status.Errorf(codes.Internal, "failed to download image: %v", err)
+	}
+
+	// Store using storage backend (it handles hashing internally)
+	tmpFile.Seek(0, 0) // Reset to beginning
+	if err := f.storage.Store(imageURL, tmpFile); err != nil {
+		return status.Errorf(codes.Internal, "failed to store downloaded image: %v", err)
+	}
+
+	// Now stream the file back
+	tmpFile.Seek(0, 0) // Reset to beginning
+	buffer := make([]byte, chunkSize)
+	for {
+		n, err := tmpFile.Read(buffer)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return status.Errorf(codes.Internal, "error reading downloaded file: %v", err)
+		}
+
+		resp := &servicesv1.DownloadImageResponse{
+			Chunk: buffer[:n],
+		}
+
+		if sendErr := stream.Send(resp); sendErr != nil {
+			return status.Errorf(codes.Internal, "failed to send chunk: %v", sendErr)
 		}
 	}
 
@@ -155,26 +189,12 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 }
 
 func (f *FileRegistry) RemoveImage(ctx context.Context, req *servicesv1.RemoveImageRequest) (*servicesv1.RemoveImageResponse, error) {
-	hash, exists := f.getImageHash(req.ImageId)
-	if !exists {
+	err := f.storage.Remove(req.ImageId)
+	if err != nil {
+		slog.Warn("failed to remove image", "image_id", req.ImageId, "error", err)
 		return &servicesv1.RemoveImageResponse{
 			Removed: false,
 		}, nil
-	}
-
-	imagePath := fmt.Sprintf("%s/%s", f.root, hash)
-	if err := os.Remove(imagePath); err != nil {
-		if os.IsNotExist(err) {
-			return &servicesv1.RemoveImageResponse{
-				Removed: false,
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to remove image %q: %w", req.ImageId, err)
-	}
-
-	// Remove from metadata
-	if err := f.removeImageMetadata(req.ImageId); err != nil {
-		slog.Warn("failed to remove metadata for image", "image_id", req.ImageId, "error", err)
 	}
 
 	return &servicesv1.RemoveImageResponse{
@@ -183,9 +203,9 @@ func (f *FileRegistry) RemoveImage(ctx context.Context, req *servicesv1.RemoveIm
 }
 
 func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImagesRequest) (*servicesv1.ListImagesResponse, error) {
-	imageIDs, err := f.getAllImageIDs()
+	imageIDs, err := f.storage.List()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get image list: %w", err)
+		return nil, status.Errorf(codes.Internal, "failed to get image list: %v", err)
 	}
 
 	return &servicesv1.ListImagesResponse{
@@ -194,108 +214,21 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImage
 }
 
 func NewFileRegistry(root string) (servicesv1.FileRegistryServiceServer, error) {
-	path, pathErr := os.MkdirTemp("", "fileregistry-*")
+	// Create temp directory
+	tempDir, pathErr := os.MkdirTemp("", "fileregistry-*")
 	if pathErr != nil {
-		return nil, pathErr
+		return nil, fmt.Errorf("failed to create temp directory: %w", pathErr)
 	}
 
-	if err := os.MkdirAll(root, 0777); err != nil {
-		return nil, err
+	// Create storage backend
+	storageDir := filepath.Join(root, "storage")
+	storageBackend, storageErr := storage.NewLocalFilesystemBackend(storageDir)
+	if storageErr != nil {
+		return nil, fmt.Errorf("failed to create storage backend: %w", storageErr)
 	}
 
-	metadataFile := filepath.Join(root, "metadata.json")
 	return &FileRegistry{
-		root:         root,
-		tempDir:      path,
-		metadataFile: metadataFile,
+		tempDir: tempDir,
+		storage: storageBackend,
 	}, nil
-}
-
-// Helper methods for metadata management
-
-func (f *FileRegistry) loadMetadata() (map[string]string, error) {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	data, err := os.ReadFile(f.metadataFile)
-	if os.IsNotExist(err) {
-		return make(map[string]string), nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	var metadata []ImageMetadata
-	if err := json.Unmarshal(data, &metadata); err != nil {
-		return nil, err
-	}
-
-	mapping := make(map[string]string)
-	for _, item := range metadata {
-		mapping[item.ImageID] = item.Hash
-	}
-	return mapping, nil
-}
-
-func (f *FileRegistry) saveMetadata(mapping map[string]string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	metadata := make([]ImageMetadata, 0, len(mapping))
-	for imageID, hash := range mapping {
-		metadata = append(metadata, ImageMetadata{
-			ImageID: imageID,
-			Hash:    hash,
-		})
-	}
-
-	data, err := json.MarshalIndent(metadata, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(f.metadataFile, data, 0644)
-}
-
-func (f *FileRegistry) saveImageMetadata(imageID, hash string) error {
-	mapping, err := f.loadMetadata()
-	if err != nil {
-		return err
-	}
-
-	mapping[imageID] = hash
-	return f.saveMetadata(mapping)
-}
-
-func (f *FileRegistry) removeImageMetadata(imageID string) error {
-	mapping, err := f.loadMetadata()
-	if err != nil {
-		return err
-	}
-
-	delete(mapping, imageID)
-	return f.saveMetadata(mapping)
-}
-
-func (f *FileRegistry) getImageHash(imageID string) (string, bool) {
-	mapping, err := f.loadMetadata()
-	if err != nil {
-		return "", false
-	}
-
-	hash, exists := mapping[imageID]
-	return hash, exists
-}
-
-func (f *FileRegistry) getAllImageIDs() ([]string, error) {
-	mapping, err := f.loadMetadata()
-	if err != nil {
-		return nil, err
-	}
-
-	imageIDs := make([]string, 0, len(mapping))
-	for imageID := range mapping {
-		imageIDs = append(imageIDs, imageID)
-	}
-	return imageIDs, nil
 }
