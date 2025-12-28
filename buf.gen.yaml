@@ -15,7 +15,7 @@ plugins:
       - paths=source_relative
       - generate_unbound_methods=true
   - local: protoc-gen-openapi
-    out: src/qcontrollerd/cmd/docs
+    out: src/qcontrollerd/cmd/utils/docs
     strategy: all
     opt:
       - fq_schema_naming=true
