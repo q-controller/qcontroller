@@ -44,7 +44,7 @@ message QemuConfig {
     uint32 port = 1;
     Cache cache = 2;
     string root = 3;
-    
+
     oneof platform_specific {
         LinuxSettings linux_settings = 4;
     }
