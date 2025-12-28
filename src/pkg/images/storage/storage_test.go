@@ -13,14 +13,14 @@ func TestLocalFilesystemBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Create backend
 	backend, err := storage.NewLocalFilesystemBackend(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create backend: %v", err)
 	}
-	defer backend.Close() // Close database connection
+	defer func() { _ = backend.Close() }()
 
 	// Test data
 	imageID := "test-image"
@@ -47,7 +47,7 @@ func TestLocalFilesystemBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve image: %v", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	retrievedData := make([]byte, len(testData))
 	n, err := reader.Read(retrievedData)
@@ -98,14 +98,14 @@ func TestStorageBackendDeduplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Create backend
 	backend, err := storage.NewLocalFilesystemBackend(tempDir)
 	if err != nil {
 		t.Fatalf("Failed to create backend: %v", err)
 	}
-	defer backend.Close()
+	defer func() { _ = backend.Close() }()
 
 	testData := "Same content"
 	imageID1 := "image-1"
@@ -136,11 +136,11 @@ func TestStorageBackendDeduplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve first image: %v", err)
 	}
-	reader1.Close()
+	_ = reader1.Close()
 
 	reader2, err := backend.Retrieve(imageID2)
 	if err != nil {
 		t.Fatalf("Failed to retrieve second image: %v", err)
 	}
-	reader2.Close()
+	_ = reader2.Close()
 }

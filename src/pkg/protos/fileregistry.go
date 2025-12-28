@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	"github.com/q-controller/qcontroller/src/pkg/images/storage"
@@ -23,7 +22,6 @@ type FileRegistry struct {
 	servicesv1.UnimplementedFileRegistryServiceServer
 	tempDir string
 	storage storage.StorageBackend
-	mu      sync.RWMutex
 }
 
 func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.UploadImageRequest, servicesv1.UploadImageResponse]) error {
@@ -55,7 +53,7 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 			if reopenErr != nil {
 				return status.Errorf(codes.Internal, "failed to reopen temp file: %v", reopenErr)
 			}
-			defer tmpFile.Close()
+			defer func() { _ = tmpFile.Close() }()
 
 			if err := f.storage.Store(fileID, tmpFile); err != nil {
 				return status.Errorf(codes.Internal, "failed to store file: %v", err)
@@ -149,8 +147,8 @@ func (f *FileRegistry) downloadAndStoreImage(imageURL string, stream grpc.Server
 		return status.Errorf(codes.Internal, "failed to create temp file: %v", err)
 	}
 	defer func() {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
 	}()
 
 	// Download the image
@@ -159,13 +157,17 @@ func (f *FileRegistry) downloadAndStoreImage(imageURL string, stream grpc.Server
 	}
 
 	// Store using storage backend (it handles hashing internally)
-	tmpFile.Seek(0, 0) // Reset to beginning
+	if _, err := tmpFile.Seek(0, 0); err != nil {
+		return status.Errorf(codes.Internal, "failed to seek temp file: %v", err)
+	}
 	if err := f.storage.Store(imageURL, tmpFile); err != nil {
 		return status.Errorf(codes.Internal, "failed to store downloaded image: %v", err)
 	}
 
 	// Now stream the file back
-	tmpFile.Seek(0, 0) // Reset to beginning
+	if _, err := tmpFile.Seek(0, 0); err != nil {
+		return status.Errorf(codes.Internal, "failed to seek temp file: %v", err)
+	}
 	buffer := make([]byte, chunkSize)
 	for {
 		n, err := tmpFile.Read(buffer)
