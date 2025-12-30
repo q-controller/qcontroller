@@ -33,8 +33,15 @@ message RemoveImageResponse {
 message ListImagesRequest {
 }
 
+message VMImage {
+	string image_id = 1;
+	string hash = 2;
+	int64 size = 3;
+	string uploaded_at = 4;
+}
+
 message ListImagesResponse {
-    repeated string images = 1;
+    repeated VMImage images = 1;
 }
 
 service FileRegistryService {

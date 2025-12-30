@@ -51,8 +51,28 @@ const openAPITemplate = `%s:
                 images:
                   type: array
                   items:
-                    type: string
-                  description: Array of image IDs
+                    type: object
+                    properties:
+                      image_id:
+                        type: string
+                        description: Unique identifier for the image
+                      hash:
+                        type: string
+                        description: SHA256 hash of the image
+                      size:
+                        type: integer
+                        format: int64
+                        description: Size of the image in bytes
+                      uploaded_at:
+                        type: string
+                        format: date-time
+                        description: Timestamp when the image was uploaded
+                    required:
+                      - image_id
+                      - hash
+                      - size
+                      - uploaded_at
+                  description: Array of image metadata objects
       '500':
         description: Internal server error
 %s/{imageId}:

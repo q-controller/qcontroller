@@ -80,8 +80,10 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request, pathParams map[str
 
 	w.Header().Set("Content-Type", "application/json")
 
-	response := map[string][]string{"images": images}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	resp := map[string]interface{}{
+		"images": images,
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		slog.Warn("Failed to encode JSON response", "error", err)
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}

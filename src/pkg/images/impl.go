@@ -104,7 +104,7 @@ func (h *imageClientImpl) Remove(ctx context.Context, id string) error {
 	return err
 }
 
-func (h *imageClientImpl) List(ctx context.Context) ([]string, error) {
+func (h *imageClientImpl) List(ctx context.Context) ([]*v1.VMImage, error) {
 	resp, err := h.cli.ListImages(ctx, &v1.ListImagesRequest{})
 	if err != nil {
 		return nil, err
