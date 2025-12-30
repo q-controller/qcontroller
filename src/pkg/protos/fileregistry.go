@@ -155,9 +155,25 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImage
 		return nil, status.Errorf(codes.Internal, "failed to get image list: %v", err)
 	}
 
-	return &servicesv1.ListImagesResponse{
-		Images: imageIDs,
-	}, nil
+	resp := &servicesv1.ListImagesResponse{
+		Images: []*servicesv1.VMImage{},
+	}
+	for _, id := range imageIDs {
+		metadata, metadataErr := f.storage.GetMetadata(id)
+		if metadataErr != nil {
+			slog.Warn("failed to get image metadata", "image_id", id, "error", metadataErr)
+			continue
+		}
+
+		resp.Images = append(resp.Images, &servicesv1.VMImage{
+			ImageId:    metadata.ImageID,
+			Hash:       metadata.Hash,
+			Size:       metadata.Size,
+			UploadedAt: metadata.UploadedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	return resp, nil
 }
 
 func NewFileRegistry(root string) (servicesv1.FileRegistryServiceServer, error) {
