@@ -11,6 +11,7 @@ replace github.com/q-controller/qapi-client => ./qapi-client
 replace github.com/coredhcp/coredhcp => github.com/krjakbrjak/coredhcp v0.0.0-20251128103901-a2aa0dc11269
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.0
 	github.com/oapi-codegen/runtime v1.1.2
@@ -31,7 +32,6 @@ require (
 	github.com/coredhcp/coredhcp v0.0.0-20250927164030-d2ed887fca9b // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
