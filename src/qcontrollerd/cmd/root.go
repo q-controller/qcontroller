@@ -15,7 +15,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-	slog.SetDefault(logging.CreateLogger(slog.LevelDebug))
+	slog.SetDefault(logging.CreateLogger())
 	err := rootCmd.Execute()
 	if err != nil {
 		slog.Error("failed to execute command", "error", err)

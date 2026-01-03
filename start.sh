@@ -4,6 +4,8 @@ set -Eeuo pipefail
 
 trap cleanup SIGINT SIGTERM ERR EXIT
 
+export LOG_LEVEL=debug
+
 INTERFACE_NAME=br0
 HOST_IP=192.168.71.1/24
 BRIDGE_IP=192.168.71.3/24
