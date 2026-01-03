@@ -211,6 +211,7 @@ func (d *databaseImpl) Remove(id string) error {
 
 func NewDatabase(path string) (controller.State, error) {
 	opts := badger.DefaultOptions(filepath.Clean(path))
+	opts.Logger = nil // Disable badger logging
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, err
