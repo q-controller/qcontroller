@@ -8,7 +8,9 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"time"
 
+	imageservice "github.com/q-controller/qcontroller/src/generated/oapi"
 	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 )
 
@@ -104,12 +106,26 @@ func (h *imageClientImpl) Remove(ctx context.Context, id string) error {
 	return err
 }
 
-func (h *imageClientImpl) List(ctx context.Context) ([]*v1.VMImage, error) {
+func (h *imageClientImpl) List(ctx context.Context) ([]*imageservice.ImageInfo, error) {
 	resp, err := h.cli.ListImages(ctx, &v1.ListImagesRequest{})
 	if err != nil {
 		return nil, err
 	}
-	return resp.Images, nil
+	ret := []*imageservice.ImageInfo{}
+	for _, img := range resp.Images {
+		t, tErr := time.Parse(time.RFC3339, img.UploadedAt)
+		if tErr != nil {
+			t = time.Time{}
+		}
+
+		ret = append(ret, &imageservice.ImageInfo{
+			Hash:       img.Hash,
+			ImageId:    img.ImageId,
+			Size:       img.Size,
+			UploadedAt: t,
+		})
+	}
+	return ret, nil
 }
 
 func CreateImageClient(cli v1.FileRegistryServiceClient) (ImageClient, error) {

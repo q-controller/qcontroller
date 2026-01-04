@@ -84,22 +84,6 @@ var gwCmd = &cobra.Command{
 			return fmt.Errorf("failed to create image client: %w", imageClientErr)
 		}
 
-		imageHandler, imageHandlerErr := images.CreateHandler(imageClient)
-		if imageHandlerErr != nil {
-			return fmt.Errorf("failed to create image handler: %w", imageHandlerErr)
-		}
-
-		if err := mux.HandlePath("POST", qUtils.PathPrefix, imageHandler.Post); err != nil {
-			slog.Warn("Adding endpoint to upload VM images failed", "error", err)
-		}
-
-		if err := mux.HandlePath("DELETE", qUtils.PathPrefix+"/{imageId}", imageHandler.Delete); err != nil {
-			slog.Warn("Adding endpoint to delete VM images failed", "error", err)
-		}
-
-		if err := mux.HandlePath("GET", qUtils.PathPrefix, imageHandler.Get); err != nil {
-			slog.Warn("Adding endpoint to list VM images failed", "error", err)
-		}
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 		err := v1.RegisterControllerServiceHandlerFromEndpoint(ctx, mux, config.ControllerEndpoint, opts)
@@ -108,6 +92,7 @@ var gwCmd = &cobra.Command{
 		}
 
 		httpMux := http.NewServeMux()
+		_ = images.CreateHandler(imageClient, httpMux)
 		httpMux.Handle("/", mux)
 
 		return http.ListenAndServe(fmt.Sprintf(":%d", config.Port), httpMux)
