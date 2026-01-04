@@ -107,8 +107,10 @@ var gwCmd = &cobra.Command{
 			return err
 		}
 
-		// Start HTTP server (and proxy calls to gRPC server endpoint)
-		return http.ListenAndServe(fmt.Sprintf(":%d", config.Port), mux)
+		httpMux := http.NewServeMux()
+		httpMux.Handle("/", mux)
+
+		return http.ListenAndServe(fmt.Sprintf(":%d", config.Port), httpMux)
 	},
 }
 
