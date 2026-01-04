@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+
+	imageservice "github.com/q-controller/qcontroller/src/generated/oapi"
 )
 
 type Handler struct {
 	imageCli ImageClient
 }
 
-func (h *Handler) Post(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+func (h *Handler) PostV1Images(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -47,15 +49,9 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request, pathParams map[st
 	}
 }
 
-func (h *Handler) Delete(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+func (h *Handler) DeleteV1ImagesImageId(w http.ResponseWriter, r *http.Request, imageId string) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	imageId, ok := pathParams["imageId"]
-	if !ok || imageId == "" {
-		http.Error(w, "Missing imageId parameter", http.StatusBadRequest)
 		return
 	}
 
@@ -66,7 +62,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request, pathParams map[
 	}
 }
 
-func (h *Handler) Get(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+func (h *Handler) GetV1Images(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -89,8 +85,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request, pathParams map[str
 	}
 }
 
-func CreateHandler(cli ImageClient) (*Handler, error) {
-	return &Handler{
+func CreateHandler(cli ImageClient, mux *http.ServeMux) http.Handler {
+	return imageservice.HandlerFromMux(&Handler{
 		imageCli: cli,
-	}, nil
+	}, mux)
 }

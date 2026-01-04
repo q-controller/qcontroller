@@ -3,10 +3,8 @@ package utils
 import (
 	_ "embed"
 	"fmt"
-	"log"
 	"log/slog"
 
-	"github.com/q-controller/qcontroller/src/pkg/images"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,41 +16,46 @@ const (
 //go:embed docs/openapi.yaml
 var openAPISpecs string
 
+//go:embed docs/image-service-openapi.yml
+var imageServiceOpenAPISpecs string
+
+func mergeYAML(base, overlay map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	// Copy base
+	for k, v := range base {
+		result[k] = v
+	}
+	// Overlay on top
+	for k, v := range overlay {
+		if baseVal, ok := base[k]; ok {
+			if baseMap, ok1 := baseVal.(map[string]any); ok1 {
+				if overlayMap, ok2 := v.(map[string]any); ok2 {
+					result[k] = mergeYAML(baseMap, overlayMap) // Recursive
+					continue
+				}
+			}
+		}
+		result[k] = v // Override or add
+	}
+	return result
+}
+
 func GenerateOpenAPISpecs() (string, error) {
 	var spec map[string]interface{}
 	if err := yaml.Unmarshal([]byte(openAPISpecs), &spec); err != nil {
-		log.Fatalf("Failed to parse OpenAPI spec: %v", err)
-	}
-
-	if existingTags, ok := spec["tags"].([]string); ok {
-		// Avoid duplicates
-		found := false
-		for _, t := range existingTags {
-			if t == Tag {
-				found = true
-				break
-			}
-		}
-		if !found {
-			spec["tags"] = append(existingTags, Tag)
-		}
-	} else {
-		// Create new tags array
-		spec["tags"] = []string{Tag}
+		return "", fmt.Errorf("failed to unmarshal base OpenAPI spec: %w", err)
 	}
 
 	var imagesSpec map[string]interface{}
-	if unmarshalErr := yaml.Unmarshal([]byte(images.GetOpenAPISpec(PathPrefix, Tag)), &imagesSpec); unmarshalErr == nil {
-		if paths, ok := spec["paths"].(map[string]interface{}); ok {
-			for k, v := range imagesSpec {
-				paths[k] = v
-			}
-		}
-	} else {
-		slog.Warn("Failed to unmarshal images OpenAPI spec", "error", unmarshalErr)
+	if unmarshalErr := yaml.Unmarshal([]byte(imageServiceOpenAPISpecs), &imagesSpec); unmarshalErr != nil {
+		return "", fmt.Errorf("failed to unmarshal images OpenAPI spec: %w", unmarshalErr)
 	}
 
-	bytes, bytesErr := yaml.Marshal(spec)
+	mergedSpec := mergeYAML(spec, imagesSpec)
+
+	slog.Debug("Generated OpenAPI spec", "spec", mergedSpec)
+
+	bytes, bytesErr := yaml.Marshal(mergedSpec)
 	if bytesErr != nil {
 		return "", fmt.Errorf("failed to marshal OpenAPI spec: %w", bytesErr)
 	}
