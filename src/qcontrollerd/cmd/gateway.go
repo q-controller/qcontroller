@@ -3,9 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
@@ -16,6 +19,7 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 )
 
 func createFileRegistryClient(endpoint string) (v1.FileRegistryServiceClient, error) {
@@ -25,6 +29,76 @@ func createFileRegistryClient(endpoint string) (v1.FileRegistryServiceClient, er
 	}
 
 	return v1.NewFileRegistryServiceClient(conn), nil
+}
+
+func createEventClient(endpoint string) (v1.EventServiceClient, error) {
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("did not connect: %w", err)
+	}
+
+	return v1.NewEventServiceClient(conn), nil
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+func wsHandler(grpcClient v1.EventServiceClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		conn, connErr := upgrader.Upgrade(w, r, nil)
+		if connErr != nil {
+			slog.Error("Failed to upgrade connection", "error", connErr)
+			return
+		}
+		defer func() {
+			_ = conn.Close()
+		}()
+
+		msgType, data, readErr := conn.ReadMessage()
+		if readErr != nil || msgType != websocket.BinaryMessage {
+			slog.Warn("Invalid WebSocket message", "error", readErr, "type", msgType)
+			return
+		}
+
+		var req v1.SubscribeRequest
+		if err := proto.Unmarshal(data, &req); err != nil {
+			slog.Warn("Failed to unmarshal subscribe request", "error", err)
+			return
+		}
+
+		// Create context with timeout
+		ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+		defer cancel()
+
+		stream, err := grpcClient.Subscribe(ctx, &req)
+		if err != nil {
+			slog.Error("Failed to create subscription", "error", err)
+			return
+		}
+
+		// Forward stream → websocket
+		for {
+			update, err := stream.Recv()
+			if err != nil {
+				if err != io.EOF {
+					slog.Warn("Stream receive error", "error", err)
+				}
+				return
+			}
+
+			b, err := proto.Marshal(update)
+			if err != nil {
+				slog.Error("Failed to marshal update", "error", err)
+				return
+			}
+
+			if err := conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+				slog.Warn("Failed to write WebSocket message", "error", err)
+				return
+			}
+		}
+	}
 }
 
 var gwCmd = &cobra.Command{
@@ -84,6 +158,10 @@ var gwCmd = &cobra.Command{
 			return fmt.Errorf("failed to create image client: %w", imageClientErr)
 		}
 
+		grpcEventClient, grpcEventClientErr := createEventClient(config.ControllerEndpoint)
+		if grpcEventClientErr != nil {
+			return fmt.Errorf("failed to create event client: %w", grpcEventClientErr)
+		}
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 		err := v1.RegisterControllerServiceHandlerFromEndpoint(ctx, mux, config.ControllerEndpoint, opts)
@@ -93,6 +171,7 @@ var gwCmd = &cobra.Command{
 
 		httpMux := http.NewServeMux()
 		_ = images.CreateHandler(imageClient, httpMux)
+		httpMux.HandleFunc("/ws", wsHandler(grpcEventClient))
 		httpMux.Handle("/", mux)
 
 		return http.ListenAndServe(fmt.Sprintf(":%d", config.Port), httpMux)

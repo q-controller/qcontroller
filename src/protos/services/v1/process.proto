@@ -59,11 +59,17 @@ message Pid {
 	int32 id = 1;
 }
 
+message QemuServiceInfo {
+	string name = 1;
+	repeated string ipaddresses = 2;
+}
+
 message Event {
     string id = 1;
 	oneof event_kind {
 		Status status = 2;
 		Pid pid = 3;
+		QemuServiceInfo info = 4;
 	}
 }
 
@@ -73,11 +79,6 @@ message QemuServiceStatusResponse {
 
 message QemuServiceInfoRequest {
 	repeated string ids = 1;
-}
-
-message QemuServiceInfo {
-	string name = 1;
-	repeated string ipaddresses = 2;
 }
 
 message QemuServiceInfoResponse {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -8,6 +9,7 @@ import (
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
@@ -60,7 +62,9 @@ var controllerCmd = &cobra.Command{
 
 		s := grpc.NewServer()
 
-		reg, regErr := protos.NewFileRegistry(filepath.Join(config.Root, config.Cache.Root))
+		servicesv1.RegisterEventServiceServer(s, protos.NewEventServer())
+
+		reg, regErr := protos.NewFileRegistry(filepath.Join(config.Root, config.Cache.Root), lis.Addr().String())
 		if regErr != nil {
 			return fmt.Errorf("failed to create server %w", regErr)
 		}
@@ -76,7 +80,12 @@ var controllerCmd = &cobra.Command{
 			return fmt.Errorf("failed to create image client: %w", imageClientErr)
 		}
 
-		contr, contrErr := protos.NewController(config, imageClient)
+		eventPublisher, eventPublisherErr := events.NewEventPublisher(context.Background(), lis.Addr().String())
+		if eventPublisherErr != nil {
+			return fmt.Errorf("failed to create event publisher: %w", eventPublisherErr)
+		}
+
+		contr, contrErr := protos.NewController(config, imageClient, eventPublisher)
 		if contrErr != nil {
 			return fmt.Errorf("failed to create server %w", contrErr)
 		}

@@ -14,6 +14,7 @@ import (
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
+	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	localUtils "github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/q-controller/qemu-client/pkg/utils"
@@ -37,11 +38,12 @@ type Manager struct {
 	qemuConn *grpc.ClientConn
 	qemuCh   chan *servicesv1.Event
 
-	imageClient images.ImageClient
+	imageClient     images.ImageClient
+	eventsPublisher *events.Publisher
 }
 
 // NewManager creates a new VM provisioner.
-func newManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient) (*Manager, error) {
+func newManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient, eventPublisher *events.Publisher) (*Manager, error) {
 	if _, statErr := os.Stat(rootDir); statErr != nil {
 		return nil, statErr
 	}
@@ -62,12 +64,13 @@ func newManager(rootDir string, qemuEndpoint string, state controller.State, ima
 	}
 
 	manager := Manager{
-		state:        state,
-		rootDir:      rootDir,
-		instancesDir: instancesDir,
-		qemuCh:       make(chan *servicesv1.Event),
-		qemuConn:     conn,
-		imageClient:  imageClient,
+		state:           state,
+		rootDir:         rootDir,
+		instancesDir:    instancesDir,
+		qemuCh:          make(chan *servicesv1.Event),
+		qemuConn:        conn,
+		imageClient:     imageClient,
+		eventsPublisher: eventPublisher,
 	}
 
 	// This can occur only during startup. Ensure
@@ -154,6 +157,10 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 		return err
 	}
 
+	if eventErr := m.eventsPublisher.VMRemoved(id); eventErr != nil {
+		slog.Warn("Failed to publish VM removal event", "id", id, "error", eventErr)
+	}
+
 	return os.RemoveAll(filepath.Join(m.instancesDir, id))
 }
 
@@ -213,9 +220,9 @@ func (m *Manager) Info(id string) ([]*servicesv1.Info, error) {
 var singleton *Manager
 var once sync.Once
 
-func CreateManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient) *Manager {
+func CreateManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient, eventPublisher *events.Publisher) *Manager {
 	once.Do(func() {
-		mgr, mgrErr := newManager(rootDir, qemuEndpoint, state, imageClient)
+		mgr, mgrErr := newManager(rootDir, qemuEndpoint, state, imageClient, eventPublisher)
 		if mgrErr != nil {
 			slog.Error("failed to create VM manager", "error", mgrErr)
 		}
@@ -240,6 +247,14 @@ func (m *Manager) eventLoop() {
 						if _, instanceErr := m.state.Update(inst); instanceErr != nil {
 							slog.Error("Failed to update state", "instance", event.Id, "error", instanceErr)
 						}
+						if eventErr := m.eventsPublisher.VMUpdated(
+							&servicesv1.Info{
+								Name:  inst.Id,
+								State: inst.State.String(),
+							},
+						); eventErr != nil {
+							slog.Warn("Failed to publish VM update event", "id", inst.Id, "error", eventErr)
+						}
 					}
 					if !data.Status.Running {
 						inst.Pid = nil
@@ -251,6 +266,16 @@ func (m *Manager) eventLoop() {
 					inst.Pid = &data.Pid.Id
 					if _, instanceErr := m.state.Update(inst); instanceErr != nil {
 						slog.Error("Failed to update state", "instance", event.Id, "error", instanceErr)
+					}
+				case *servicesv1.Event_Info:
+					if eventErr := m.eventsPublisher.VMUpdated(
+						&servicesv1.Info{
+							Name:        inst.Id,
+							State:       inst.State.String(),
+							Ipaddresses: data.Info.Ipaddresses,
+						},
+					); eventErr != nil {
+						slog.Warn("Failed to publish VM info event", "id", inst.Id, "error", eventErr)
 					}
 				}
 			}
