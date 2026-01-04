@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/q-controller/qapi-client/src/client"
 	"github.com/q-controller/qcontroller/src/generated/qapi"
@@ -156,10 +157,35 @@ func (q *QemuServer) Status(req *servicesv1.QemuServiceStatusRequest,
 		defer close(ch)
 		instance.Subscribe(ch)
 		ctx := stream.Context()
+		// Create a timer to periodically send VM info
+		timer := time.NewTicker(1 * time.Second)
+		defer timer.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return nil
+			case <-timer.C:
+				resp, respErr := q.Info(ctx, &servicesv1.QemuServiceInfoRequest{
+					Ids: []string{req.Id},
+				})
+				if respErr != nil {
+					slog.Warn("Failed to get VM info", "error", respErr)
+					continue
+				}
+				if len(resp.Info) > 0 {
+					info := resp.Info[0]
+					if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
+						Event: &servicesv1.Event{
+							Id: req.Id,
+							EventKind: &servicesv1.Event_Info{
+								Info: info,
+							},
+						},
+					}); sendErr != nil {
+						slog.Warn("Failed to stream data", "error", sendErr)
+						return sendErr
+					}
+				}
 			case event, ok := <-ch:
 				if !ok {
 					if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
@@ -249,10 +275,6 @@ func NewQemuService(monitor *process.InstanceMonitor, config *settingsv1.QemuCon
 			if event.Add {
 				if addErr := q.monitor.Add(event.Id, event.SocketPath, event.Prefix, 10, 1000); addErr != nil {
 					slog.Error("could not add instance to monitor", "instance", event.Id, "error", addErr)
-				}
-			} else {
-				if deleteErr := q.monitor.Delete(event.Id, event.Prefix); deleteErr != nil {
-					slog.Error("could not delete instance from monitor", "instance", event.Id, "error", deleteErr)
 				}
 			}
 		}
