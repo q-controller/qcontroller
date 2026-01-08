@@ -5,6 +5,7 @@ ARG USER_ID
 
 RUN apt update
 RUN apt install -y protobuf-compiler
+RUN apt install -y default-jre
 
 RUN if ! getent group ${GROUP_ID} > /dev/null; then \
         addgroup --gid ${GROUP_ID} qcontrollerd; \

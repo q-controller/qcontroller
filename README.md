@@ -15,6 +15,10 @@ Operations are defined using [Protocol Buffers](/src/protos/) and exposed via bo
 
 ---
 
+![Dashboard Screenshot](/dashboard.png)
+
+---
+
 ![Architecture Diagram](/architecture.svg)
 
 ---
@@ -23,6 +27,7 @@ Operations are defined using [Protocol Buffers](/src/protos/) and exposed via bo
 
 - 🛠 **Single static binary**: All logic is bundled into one Go binary with multiple subcommands.
 - 🖥 **Cross-platform support**: Works on Linux and macOS (Intel tested; Apple Silicon supported via QEMU).
+- 🎯 **Modern web UI**: Full-featured React-based interface available at [qcontroller-ui](https://github.com/q-controller/qcontroller-ui).
 - 🧠 **Declarative VM descriptions**: Define VM specs via JSON configs matching Protobuf definitions.
 - 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
 - **Real-time WebSocket updates**: Get live VM state changes via WebSocket at `/ws` endpoint.
@@ -82,6 +87,7 @@ The compiled binary provides the following subcommands:
 
 #### Packaged Installation (macOS)
 If you installed via the macOS package, services are automatically started and managed by launchd. Access the API at:
+- Web UI: `http://localhost:8080/ui/`
 - Swagger UI: `http://localhost:8080/v1/swagger/index.html`
 
 #### Manual Execution
@@ -97,7 +103,9 @@ This command will start all three components:
 - ➜ qemu: `0.0.0.0:8008`
 - ➜ controller: `0.0.0.0:8009`
 
-Then hit the REST API (e.g. using swagger ui, that is hosted at `http://localhost:8080/v1/swagger/index.html`):
+Then access the interfaces:
+- Web UI: `http://localhost:8080/ui/`
+- Swagger UI: `http://localhost:8080/v1/swagger/index.html`
 
 <img src="./swagger.png" alt="swagger UI snapshot" width="900"/>
 
