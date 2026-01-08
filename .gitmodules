@@ -7,3 +7,6 @@
 [submodule "network-utils"]
 	path = network-utils
 	url = ../network-utils.git
+[submodule "frontend"]
+	path = frontend
+	url = git@github.com:q-controller/qcontroller-ui.git

@@ -12,6 +12,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/frontend"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	qUtils "github.com/q-controller/qcontroller/src/qcontrollerd/cmd/utils"
@@ -172,7 +173,12 @@ var gwCmd = &cobra.Command{
 		httpMux := http.NewServeMux()
 		_ = images.CreateHandler(imageClient, httpMux)
 		httpMux.HandleFunc("/ws", wsHandler(grpcEventClient))
+
+		// Mount gRPC gateway at root for all API endpoints
 		httpMux.Handle("/", mux)
+
+		// Serve frontend at specific path
+		httpMux.HandleFunc("/ui/", frontend.Handler("/ui/"))
 
 		return http.ListenAndServe(fmt.Sprintf(":%d", config.Port), httpMux)
 	},

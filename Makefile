@@ -1,6 +1,7 @@
-.PHONY: clean qcontrollerd generate lint update all
+.PHONY: clean qcontrollerd generate lint update frontend all
 
 BUILD_DIR=build
+FRONTEND_BUILD_DIR=$(shell pwd)/src/pkg/frontend/generated
 GEN_DIR=src/generated
 
 all: qcontrollerd
@@ -32,5 +33,10 @@ generate: update-submodules
 	cp image-service-openapi.yml src/qcontrollerd/cmd/utils/docs/
 	buf generate
 
-qcontrollerd: generate
+frontend:
+	cd frontend && bash -c -i "yes | yarn install"
+	cd frontend && bash -c -i "yarn generate ../src/protos ../image-service-openapi.yml"
+	cd frontend && bash -c -i "BUILD_DIR=${FRONTEND_BUILD_DIR} yarn build --emptyOutDir"
+
+qcontrollerd: frontend generate
 	./build.sh
