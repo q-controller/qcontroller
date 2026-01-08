@@ -25,7 +25,8 @@ Operations are defined using [Protocol Buffers](/src/protos/) and exposed via bo
 - 🖥 **Cross-platform support**: Works on Linux and macOS (Intel tested; Apple Silicon supported via QEMU).
 - 🧠 **Declarative VM descriptions**: Define VM specs via JSON configs matching Protobuf definitions.
 - 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
-- 📦 **Custom image support**: Upload and manage your own VM images via API.
+- **Real-time WebSocket updates**: Get live VM state changes via WebSocket at `/ws` endpoint.
+- **Custom image support**: Upload and manage your own VM images via API.
 - 📜 **Auto-generated OpenAPI schema**: Serves interactive API docs using [http-swagger](https://github.com/swaggo/http-swagger).
 - 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
 
@@ -125,7 +126,14 @@ The gRPC gateway automatically generates a Swagger-compatible OpenAPI schema. A 
 ```shell
 http://localhost:8080/v1/swagger/index.html
 ```
-All REST endpoints follow the schema defined in [/src/protos/](/src/protos/).
+
+For real-time VM state updates, connect to the WebSocket endpoint:
+
+```shell
+ws://localhost:8080/ws
+```
+
+All REST endpoints follow the schema defined in [/src/protos/](/src/protos/). WebSocket messages use Protocol Buffers for efficient binary communication.
 
 ## 🧪 Development Setup
 
