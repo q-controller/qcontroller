@@ -98,7 +98,7 @@ func newManager(rootDir string, qemuEndpoint string, state controller.State, ima
 
 // NewVMInstance creates a new VM instance with a state machine.
 func (m *Manager) Create(id, imageId string,
-	cpus uint32, memory, disk string) error {
+	cpus uint32, memory, disk uint32) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 

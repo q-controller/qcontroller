@@ -73,12 +73,12 @@ func (d *databaseImpl) List() ([]*vmv1.Instance, error) {
 func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 	// Enforce NOT NULL and CHECK constraints
 	if instance.Id == "" || instance.Path == "" || instance.Hardware == nil ||
-		instance.Hardware.Memory == "" || instance.Hardware.Disk == "" ||
 		(instance.Hwaddr == nil || *instance.Hwaddr == "") {
 		return nil, fmt.Errorf("%w: required field missing", ErrConstraint)
 	}
-	if instance.Hardware.Cpus == 0 {
-		return nil, fmt.Errorf("%w: cpus must be > 0", ErrConstraint)
+
+	if instance.Hardware.Memory == 0 || instance.Hardware.Disk == 0 || instance.Hardware.Cpus == 0 {
+		return nil, fmt.Errorf("%w: cpus, memory, and disk must be > 0", ErrConstraint)
 	}
 
 	// Enforce uniqueness for HwAddr and Pid

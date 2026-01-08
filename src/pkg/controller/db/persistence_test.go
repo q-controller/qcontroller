@@ -25,14 +25,14 @@ func tempDB(t *testing.T) (*databaseImpl, func()) {
 
 func validInstance(id string) *vmv1.Instance {
 	hw := "aa:bb:cc:dd:ee:ff"
-	mem := "1G"
-	disk := "10G"
+	mem := 1024
+	disk := 10
 	return &vmv1.Instance{
 		Id:   id,
 		Path: "/tmp/vm",
 		Hardware: &settingsv1.VM{
-			Memory: mem,
-			Disk:   disk,
+			Memory: uint32(mem),
+			Disk:   uint32(disk),
 			Cpus:   2,
 		},
 		Hwaddr: &hw,
@@ -78,14 +78,14 @@ func TestUpdate_MissingRequiredFields(t *testing.T) {
 	}
 	// Missing Hardware.Memory
 	inst = validInstance("id4")
-	inst.Hardware.Memory = ""
+	inst.Hardware.Memory = 0
 	_, err = db.Update(inst)
 	if err == nil {
 		t.Error("expected error for missing Hardware.Memory")
 	}
 	// Missing Hardware.Disk
 	inst = validInstance("id5")
-	inst.Hardware.Disk = ""
+	inst.Hardware.Disk = 0
 	_, err = db.Update(inst)
 	if err == nil {
 		t.Error("expected error for missing Hardware.Disk")
