@@ -6,8 +6,8 @@ option go_package = "github.com/q-controller/qcontroller/src/generated/settings/
 
 message VM {
     uint32 cpus = 1;
-    string memory = 2;
-    string disk = 3;
+    uint32 memory = 2;
+    uint32 disk = 3;
 }
 
 message Cache {
