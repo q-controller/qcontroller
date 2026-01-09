@@ -20,3 +20,4 @@ RUN chmod +x /usr/local/bin/prepare.sh
 USER qcontrollerd
 
 RUN /usr/local/bin/prepare.sh
+ENTRYPOINT ["/bin/bash", "-i", "-c"]
