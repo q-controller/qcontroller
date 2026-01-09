@@ -9,4 +9,4 @@
 	url = ../network-utils.git
 [submodule "frontend"]
 	path = frontend
-	url = git@github.com:q-controller/qcontroller-ui.git
+	url = ../qcontroller-ui.git
