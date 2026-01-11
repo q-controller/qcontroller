@@ -138,7 +138,8 @@ func (m *Manager) Stop(ctx context.Context, id string, force bool) error {
 	defer m.mutex.Unlock()
 
 	if _, stopErr := servicesv1.NewQemuServiceClient(m.qemuConn).Stop(context.Background(), &servicesv1.QemuServiceStopRequest{
-		Id: id,
+		Id:    id,
+		Force: force,
 	}); stopErr != nil {
 		return stopErr
 	}
