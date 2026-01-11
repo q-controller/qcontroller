@@ -8,8 +8,6 @@ replace github.com/q-controller/qemu-client => ./qemu-client
 
 replace github.com/q-controller/qapi-client => ./qapi-client
 
-replace github.com/coredhcp/coredhcp => github.com/krjakbrjak/coredhcp v0.0.0-20251128103901-a2aa0dc11269
-
 require (
 	github.com/dgraph-io/badger/v4 v4.9.0
 	github.com/fsnotify/fsnotify v1.9.0
@@ -32,10 +30,10 @@ require (
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
-	github.com/bits-and-blooms/bitset v1.24.0 // indirect
+	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chappjc/logrus-prefix v0.0.0-20180227015900-3a1d64819adb // indirect
-	github.com/coredhcp/coredhcp v0.0.0-20250927164030-d2ed887fca9b // indirect
+	github.com/coredhcp/coredhcp v0.0.0-20260110195901-da62c7b1bd56 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -68,7 +66,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.20.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/swaggo/files/v2 v2.0.0 // indirect
