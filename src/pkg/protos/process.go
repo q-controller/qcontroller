@@ -85,9 +85,7 @@ func (q *QemuServer) Start(ctx context.Context,
 	q.mu.Unlock()
 
 	go func() {
-		ch := make(chan *servicesv1.Event)
-		defer close(ch)
-		item.Subscribe(ch)
+		ch := item.Subscribe()
 		added := false
 		for event := range ch {
 			switch data := event.EventKind.(type) {
@@ -153,9 +151,7 @@ func (q *QemuServer) Status(req *servicesv1.QemuServiceStatusRequest,
 	q.mu.RUnlock()
 
 	if exists {
-		ch := make(chan *servicesv1.Event)
-		defer close(ch)
-		instance.Subscribe(ch)
+		ch := instance.Subscribe()
 		ctx := stream.Context()
 		// Create a timer to periodically send VM info
 		timer := time.NewTicker(1 * time.Second)

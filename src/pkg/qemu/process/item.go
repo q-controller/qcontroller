@@ -14,8 +14,10 @@ type Item struct {
 	add         chan chan<- *servicesv1.Event
 }
 
-func (item *Item) Subscribe(ch chan<- *servicesv1.Event) {
+func (item *Item) Subscribe() <-chan *servicesv1.Event {
+	ch := make(chan *servicesv1.Event)
 	item.add <- ch
+	return ch
 }
 
 func CreateItem(id string, instance *qemu.Instance) (*Item, error) {
@@ -61,6 +63,10 @@ func CreateItem(id string, instance *qemu.Instance) (*Item, error) {
 			default:
 				// Drop message if subscriber is slow
 			}
+		}
+
+		for ch := range item.subscribers {
+			close(ch)
 		}
 
 		item.subscribers = nil
