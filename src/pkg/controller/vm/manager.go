@@ -316,6 +316,12 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 		Pid: instance.Pid,
 	})
 	if startErr != nil {
+		if instance.Pid != nil {
+			instance.Pid = nil
+			if _, instanceErr := m.state.Update(instance); instanceErr != nil {
+				slog.Error("Failed to update state", "instance", instance.Id, "error", instanceErr)
+			}
+		}
 		return startErr
 	}
 
@@ -348,6 +354,14 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 					}
 				}
 			} else {
+				m.qemuCh <- &servicesv1.Event{
+					Id: instance.Id,
+					EventKind: &servicesv1.Event_Status{
+						Status: &servicesv1.Status{
+							Running: false,
+						},
+					},
+				}
 				break STATUS_LOOP
 			}
 		}
