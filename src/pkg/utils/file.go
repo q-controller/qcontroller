@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,7 +35,7 @@ func TouchFile(path string) error {
 	return os.Chtimes(path, now, now)
 }
 
-func WaitForFileCreation(filename string, timeout time.Duration) error {
+func WaitForFileCreation(ctx context.Context, filename string) error {
 	// First check if file already exists
 	if _, err := os.Stat(filename); err == nil {
 		return nil // File already exists
@@ -62,8 +63,7 @@ func WaitForFileCreation(filename string, timeout time.Duration) error {
 		return nil
 	}
 
-	slog.Debug("WaitForFileCreation: starting to watch directory", "directory", dir, "filename", base, "timeout", timeout)
-	deadline := time.After(timeout)
+	slog.Debug("WaitForFileCreation: starting to watch directory", "directory", dir, "filename", base)
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -83,8 +83,8 @@ func WaitForFileCreation(filename string, timeout time.Duration) error {
 			if !ok {
 				return fmt.Errorf("watcher error channel closed")
 			}
-		case <-deadline:
-			return fmt.Errorf("timeout waiting for %s", filename)
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }

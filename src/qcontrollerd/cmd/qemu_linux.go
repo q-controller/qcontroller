@@ -113,6 +113,11 @@ var qemuCmd = &cobra.Command{
 
 			cmd := exec.Command(os.Args[0], args...)
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+
+			// Ensure child process receives SIGTERM if parent dies
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Pdeathsig: syscall.SIGTERM,
+			}
 			if err := netw.Execute(func() error {
 				if err := cmd.Start(); err != nil {
 					return fmt.Errorf("failed to start qemu command: %w", err)
@@ -123,11 +128,6 @@ var qemuCmd = &cobra.Command{
 			}
 
 			<-done
-
-			slog.Info("Stopping QEMU process")
-			if err := cmd.Process.Signal(os.Interrupt); err != nil {
-				slog.Error("Failed to send interrupt to QEMU process", "error", err)
-			}
 		}
 
 		return nil

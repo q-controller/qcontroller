@@ -53,15 +53,12 @@ func (i *InstanceMonitor) Execute(name string, request client.Request) (*monitor
 	return nil, ErrNotReady
 }
 
-func (i *InstanceMonitor) Add(id, socketPath, prefix string, retryCount int, intervalMs int) error {
-	if retryCount < 0 || intervalMs < 0 {
-		return fmt.Errorf("instancemonitor.add: wrong input")
-	}
+func (i *InstanceMonitor) Add(ctx context.Context, id, socketPath, prefix string) error {
 	name := id
 	if prefix != "" {
 		name = fmt.Sprintf("%s:%s", prefix, name)
 	}
-	if err := utils.WaitForFileCreation(socketPath, 60*time.Second); err != nil {
+	if err := utils.WaitForFileCreation(ctx, socketPath); err != nil {
 		return err
 	}
 	if addErr := i.qapi.Add(name, socketPath); addErr != nil {

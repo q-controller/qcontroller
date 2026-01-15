@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/q-controller/qapi-client/src/client"
+	"github.com/q-controller/qapi-client/src/monitor"
 	"github.com/q-controller/qcontroller/src/generated/qapi"
 	"github.com/q-controller/qcontroller/src/generated/qga"
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
@@ -23,21 +23,114 @@ import (
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
-type MonitorEvent struct {
-	Add        bool
-	Id         string
-	Prefix     string
-	SocketPath string
-}
-
 type QemuServer struct {
 	servicesv1.UnimplementedQemuServiceServer
 
-	mu        sync.RWMutex
-	monitor   *process.InstanceMonitor
-	monitorCh chan MonitorEvent
-	instances map[string]*process.Item
-	nm        network.NetworkManager
+	nm                   network.NetworkManager
+	instanceEventChannel chan<- *InstanceEvent
+	commandCh            chan<- Command
+	shutdownCh           chan<- struct{}
+	forceStopCh          chan<- string
+}
+
+type InstanceEvent struct {
+	Instance *qemu.Instance
+	Id       string
+}
+
+type RequestKind int
+
+const (
+	RequestKindQMP RequestKind = iota
+	RequestKindQGA
+)
+
+type CommandResult struct {
+	Result *monitor.ExecuteResult
+	Error  error
+}
+
+type Command struct {
+	Id          string
+	RequestKind RequestKind
+	Request     client.Request
+	Result      chan<- CommandResult
+}
+
+func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan string, cmd <-chan Command, stop <-chan struct{}, ch <-chan *InstanceEvent) {
+	type instanceState struct {
+		inst   *qemu.Instance
+		cancel context.CancelFunc
+	}
+	instances := map[string]*instanceState{}
+	removeCh := make(chan string)
+	for {
+		select {
+		case <-stop:
+			for _, state := range instances {
+				state.cancel()
+			}
+			return
+		case id, ok := <-removeCh:
+			if ok {
+				if state, exists := instances[id]; exists {
+					state.cancel()
+				}
+				delete(instances, id)
+			}
+		case id, ok := <-forceStop:
+			if ok {
+				if state, exists := instances[id]; exists {
+					state.cancel()
+					delete(instances, id)
+					if stopErr := state.inst.Stop(); stopErr != nil {
+						slog.Error("could not stop instance", "instance", id, "error", stopErr)
+					}
+				}
+			}
+		case command, ok := <-cmd:
+			if ok {
+				if _, exists := instances[command.Id]; exists {
+					name := fmt.Sprintf("%s:%s", process.PREFIX_QGA, command.Id)
+					if command.RequestKind == RequestKindQMP {
+						name = fmt.Sprintf("%s:%s", process.PREFIX_QMP, command.Id)
+					}
+					result, resErr := monitor.Execute(name, command.Request)
+					command.Result <- CommandResult{
+						Result: result,
+						Error:  resErr,
+					}
+				}
+				close(command.Result)
+			}
+		case event, ok := <-ch:
+			if ok {
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				instances[event.Id] = &instanceState{inst: event.Instance, cancel: cancel}
+				go func(ctx context.Context) {
+					err := monitor.Add(ctx, event.Id, event.Instance.QMP, process.PREFIX_QMP)
+					if err != nil && ctx.Err() == nil {
+						slog.Error("could not add QMP instance to monitor", "instance", event.Id, "error", err)
+					}
+				}(ctx)
+				go func(ctx context.Context) {
+					err := monitor.Add(ctx, event.Id, event.Instance.QGA, process.PREFIX_QGA)
+					if err != nil && ctx.Err() == nil {
+						slog.Error("could not add QGA instance to monitor", "instance", event.Id, "error", err)
+					}
+				}(ctx)
+				go func(event *InstanceEvent, ctx context.Context) {
+					select {
+					case <-event.Instance.Done:
+						slog.Debug("Instance stopped", "instance", event.Id)
+						removeCh <- event.Id
+					case <-ctx.Done():
+						slog.Info("Shutting down monitoring goroutine", "instance", event.Id)
+					}
+				}(event, ctx)
+			}
+		}
+	}
 }
 
 func (q *QemuServer) Start(ctx context.Context,
@@ -73,43 +166,10 @@ func (q *QemuServer) Start(ctx context.Context,
 		qemuInstance = inst
 	}
 
-	item, itemErr := process.CreateItem(id, qemuInstance)
-	if itemErr != nil {
-		return nil, status.Errorf(codes.Internal, "method Start failed: %v", itemErr)
+	q.instanceEventChannel <- &InstanceEvent{
+		Instance: qemuInstance,
+		Id:       id,
 	}
-
-	q.mu.Lock()
-	q.instances[req.Config.Id] = item
-	qmpSocketPath := qemuInstance.QMP
-	qgaSocketPath := qemuInstance.QGA
-	q.mu.Unlock()
-
-	go func() {
-		ch := item.Subscribe()
-		added := false
-		for event := range ch {
-			switch data := event.EventKind.(type) {
-			case *servicesv1.Event_Status:
-				if !data.Status.Running || !added {
-					q.monitorCh <- MonitorEvent{
-						Add:        data.Status.Running,
-						Id:         event.Id,
-						SocketPath: qmpSocketPath,
-						Prefix:     process.PREFIX_QMP,
-					}
-					q.monitorCh <- MonitorEvent{
-						Add:        data.Status.Running,
-						Id:         event.Id,
-						SocketPath: qgaSocketPath,
-						Prefix:     process.PREFIX_QGA,
-					}
-					if data.Status.Running {
-						added = true
-					}
-				}
-			}
-		}
-	}()
 
 	return &servicesv1.QemuServiceStartResponse{
 		Pid: int32(qemuInstance.Pid),
@@ -118,27 +178,26 @@ func (q *QemuServer) Start(ctx context.Context,
 
 func (q *QemuServer) Stop(ctx context.Context,
 	req *servicesv1.QemuServiceStopRequest) (*emptypb.Empty, error) {
-	q.mu.RLock()
-	instance, exists := q.instances[req.Id]
-	q.mu.RUnlock()
+	if req.Force {
+		q.forceStopCh <- req.Id
+		return &emptypb.Empty{}, nil
+	}
 
-	if exists {
-		if req.Force {
-			if stopErr := instance.Instance.Stop(); stopErr != nil {
-				return nil, stopErr
-			}
+	shReq, shReqErr := qapi.PrepareSystemPowerdownRequest()
+	if shReqErr != nil {
+		return nil, shReqErr
+	}
+	ch := make(chan CommandResult)
+	q.commandCh <- Command{
+		Id:          req.Id,
+		RequestKind: RequestKindQMP,
+		Request:     client.Request(*shReq),
+		Result:      ch,
+	}
 
-			return &emptypb.Empty{}, nil
-		}
-
-		shReq, shReqErr := qapi.PrepareSystemPowerdownRequest()
-		if shReqErr != nil {
-			return nil, shReqErr
-		}
-		_, chErr := q.monitor.Execute(fmt.Sprintf("%s:%s", process.PREFIX_QMP, req.Id), client.Request(*shReq))
-		if chErr != nil {
-			return nil, chErr
-		}
+	res := <-ch
+	if res.Error != nil {
+		return nil, res.Error
 	}
 
 	return &emptypb.Empty{}, nil
@@ -146,74 +205,63 @@ func (q *QemuServer) Stop(ctx context.Context,
 
 func (q *QemuServer) Status(req *servicesv1.QemuServiceStatusRequest,
 	stream grpc.ServerStreamingServer[servicesv1.QemuServiceStatusResponse]) error {
-	q.mu.RLock()
-	instance, exists := q.instances[req.Id]
-	q.mu.RUnlock()
-
-	if exists {
-		ch := instance.Subscribe()
-		ctx := stream.Context()
-		// Create a timer to periodically send VM info
-		timer := time.NewTicker(1 * time.Second)
-		defer timer.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-timer.C:
-				resp, respErr := q.Info(ctx, &servicesv1.QemuServiceInfoRequest{
-					Ids: []string{req.Id},
-				})
-				if respErr != nil {
-					slog.Warn("Failed to get VM info", "error", respErr)
-					continue
-				}
-				if len(resp.Info) > 0 {
-					info := resp.Info[0]
-					if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
-						Event: &servicesv1.Event{
-							Id: req.Id,
-							EventKind: &servicesv1.Event_Info{
-								Info: info,
-							},
-						},
-					}); sendErr != nil {
-						slog.Warn("Failed to stream data", "error", sendErr)
-						return sendErr
-					}
-				}
-			case event, ok := <-ch:
-				if !ok {
-					if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
-						Event: &servicesv1.Event{
-							EventKind: &servicesv1.Event_Status{
-								Status: &servicesv1.Status{
-									Running: false,
-								},
-							},
-						},
-					}); sendErr != nil {
-						slog.Warn("Failed to stream data", "error", sendErr)
-					}
-					return nil
-				}
+	ctx := stream.Context()
+	// Create a timer to periodically send VM info
+	timer := time.NewTicker(1 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-timer.C:
+			resp, respErr := q.Info(ctx, &servicesv1.QemuServiceInfoRequest{
+				Ids: []string{req.Id},
+			})
+			if respErr != nil {
+				slog.Error("Failed to get VM info", "error", respErr)
 				if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
-					Event: event,
+					Event: &servicesv1.Event{
+						Id: req.Id,
+						EventKind: &servicesv1.Event_Status{
+							Status: &servicesv1.Status{
+								Running: false,
+							},
+						},
+					},
 				}); sendErr != nil {
 					return sendErr
 				}
 
-				switch data := event.EventKind.(type) {
-				case *servicesv1.Event_Status:
-					if !data.Status.Running {
-						return nil
-					}
+				return nil
+			}
+			if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
+				Event: &servicesv1.Event{
+					Id: req.Id,
+					EventKind: &servicesv1.Event_Status{
+						Status: &servicesv1.Status{
+							Running: true,
+						},
+					},
+				},
+			}); sendErr != nil {
+				return sendErr
+			}
+			if len(resp.Info) > 0 {
+				info := resp.Info[0]
+				if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
+					Event: &servicesv1.Event{
+						Id: req.Id,
+						EventKind: &servicesv1.Event_Info{
+							Info: info,
+						},
+					},
+				}); sendErr != nil {
+					slog.Warn("Failed to stream data", "error", sendErr)
+					return sendErr
 				}
 			}
 		}
 	}
-
-	return nil
 }
 
 func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceInfoRequest) (*servicesv1.QemuServiceInfoResponse, error) {
@@ -221,23 +269,40 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 	for _, id := range request.Ids {
 		ipaddresses := []string{}
 		if req, reqErr := qga.PrepareGuestNetworkGetInterfacesRequest(); reqErr == nil {
-			if execRes, resErr := q.monitor.Execute(fmt.Sprintf("%s:%s", process.PREFIX_QGA, id), client.Request(*req)); resErr == nil {
-				res, resOk := execRes.Get(ctx, -1)
-				if resOk && res.Return != nil {
-					var networkInterfaces qga.GuestNetworkInterfaceList
-					if unmarshalErr := json.Unmarshal(res.Return, &networkInterfaces); unmarshalErr == nil {
-						for _, networkInterface := range networkInterfaces {
-							if networkInterface.IpAddresses != nil {
-								for _, ipaddress := range *networkInterface.IpAddresses {
-									ip := net.ParseIP(ipaddress.IpAddress)
-									if !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-										ipaddresses = append(ipaddresses, ipaddress.IpAddress)
+			ch := make(chan CommandResult)
+			q.commandCh <- Command{
+				Id:          id,
+				RequestKind: RequestKindQGA,
+				Request:     client.Request(*req),
+				Result:      ch,
+			}
+			res := <-ch
+			if res.Error == nil {
+				if res.Result != nil {
+					res, resOk := res.Result.Get(ctx, -1)
+					if resOk && res.Return != nil {
+						var networkInterfaces qga.GuestNetworkInterfaceList
+						if unmarshalErr := json.Unmarshal(res.Return, &networkInterfaces); unmarshalErr == nil {
+							for _, networkInterface := range networkInterfaces {
+								if networkInterface.IpAddresses != nil {
+									for _, ipaddress := range *networkInterface.IpAddresses {
+										ip := net.ParseIP(ipaddress.IpAddress)
+										if !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
+											ipaddresses = append(ipaddresses, ipaddress.IpAddress)
+										}
 									}
 								}
 							}
 						}
 					}
+				} else {
+					return nil, fmt.Errorf("no result from QGA for instance %s", id)
 				}
+			} else {
+				if res.Error == process.ErrNotReady {
+					continue
+				}
+				return nil, res.Error
 			}
 		}
 		res = append(res, &servicesv1.QemuServiceInfo{
@@ -252,10 +317,15 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 }
 
 func NewQemuService(monitor *process.InstanceMonitor, config *settingsv1.QemuConfig) (servicesv1.QemuServiceServer, error) {
+	instanceCh := make(chan *InstanceEvent)
+	commandCh := make(chan Command)
+	stop := make(chan struct{})
+	forceStop := make(chan string)
 	q := &QemuServer{
-		instances: map[string]*process.Item{},
-		monitor:   monitor,
-		monitorCh: make(chan MonitorEvent),
+		instanceEventChannel: instanceCh,
+		commandCh:            commandCh,
+		shutdownCh:           stop,
+		forceStopCh:          forceStop,
 	}
 
 	if linuxSettings := config.GetLinuxSettings(); linuxSettings != nil {
@@ -266,15 +336,7 @@ func NewQemuService(monitor *process.InstanceMonitor, config *settingsv1.QemuCon
 		q.nm = nm
 	}
 
-	go func() {
-		for event := range q.monitorCh {
-			if event.Add {
-				if addErr := q.monitor.Add(event.Id, event.SocketPath, event.Prefix, 10, 1000); addErr != nil {
-					slog.Error("could not add instance to monitor", "instance", event.Id, "error", addErr)
-				}
-			}
-		}
-	}()
+	go instanceLifecycleLoop(monitor, forceStop, commandCh, stop, instanceCh)
 
 	return q, nil
 }

@@ -28,7 +28,7 @@ func Entrypoint(config *settingsv1.QemuConfig, stop <-chan struct{}) error {
 	s := grpc.NewServer()
 	defer func() {
 		// Create a deadline for graceful shutdown
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer shutdownCancel()
 
 		// Give ongoing operations a chance to complete
@@ -71,6 +71,8 @@ func Entrypoint(config *settingsv1.QemuConfig, stop <-chan struct{}) error {
 	go func() {
 		if err := s.Serve(lis); err != nil {
 			errCh <- err
+		} else {
+			errCh <- nil
 		}
 	}()
 
