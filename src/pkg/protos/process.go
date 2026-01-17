@@ -154,10 +154,11 @@ func (q *QemuServer) Start(ctx context.Context,
 		}
 
 		inst, qemuInstanceErr := qemu.Start(req.Config.Id, req.Config.Image, req.Config.OutFilePath, req.Config.ErrFilePath, qemu.Config{
-			Cpus:   req.Config.Hardware.Cpus,
-			Memory: req.Config.Hardware.Memory,
-			Disk:   req.Config.Hardware.Disk,
-			HwAddr: req.Config.Network.Mac,
+			Cpus:     req.Config.Hardware.Cpus,
+			Memory:   req.Config.Hardware.Memory,
+			Disk:     req.Config.Hardware.Disk,
+			HwAddr:   req.Config.Network.Mac,
+			UserData: req.Config.Userdata,
 		})
 
 		if qemuInstanceErr != nil {
