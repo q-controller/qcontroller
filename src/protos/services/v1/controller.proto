@@ -13,6 +13,7 @@ message CreateRequest {
     string name = 2;
     string image = 3;
     bool start = 4;
+    optional string userdata = 5;
 }
 
 message StartRequest {
@@ -41,6 +42,8 @@ message Info {
     settings.v1.VM details = 2;
     string state = 3;
     repeated string ipaddresses = 4;
+    string hwaddr = 5;
+    string userdata = 6;
 }
 
 message InfoResponse {
