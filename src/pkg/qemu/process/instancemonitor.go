@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/q-controller/qapi-client/src/client"
 	"github.com/q-controller/qapi-client/src/monitor"
@@ -80,68 +79,56 @@ func NewInstanceMonitor() (*InstanceMonitor, error) {
 	}
 
 	go func() {
-		timer := time.NewTicker(5 * time.Second)
-		defer timer.Stop()
 		requests := make(map[string]string)
 		qapiChan := qapiClient.Messages()
-		for {
-			select {
-			case <-timer.C:
-				for reqId, instance := range requests {
+		for monitorEvent := range qapiChan {
+			if monitorEvent.InstanceMessage != nil {
+				if monitorEvent.InstanceMessage.InstanceMessageType == monitor.InstanceMessageAdd {
 					if req, reqErr := qga.PrepareGuestPingRequest(); reqErr == nil {
-						if _, chErr := mon.qapi.Execute(instance, client.Request(*req)); chErr == nil {
-							requests[req.Id] = instance
-						}
-						delete(requests, reqId)
-					}
-				}
-			case monitorEvent := <-qapiChan:
-				if monitorEvent.InstanceMessage != nil {
-					if monitorEvent.InstanceMessage.InstanceMessageType == monitor.InstanceMessageAdd {
-						if req, reqErr := qga.PrepareGuestPingRequest(); reqErr == nil {
-							if _, chErr := mon.qapi.Execute(monitorEvent.InstanceMessage.Instance, client.Request(*req)); chErr == nil {
-								requests[req.Id] = monitorEvent.InstanceMessage.Instance
-							}
+						if _, chErr := mon.qapi.Execute(monitorEvent.InstanceMessage.Instance, client.Request(*req)); chErr == nil {
+							requests[req.Id] = monitorEvent.InstanceMessage.Instance
 						}
 					}
 				}
-				if monitorEvent.Message != nil {
-					msg := *monitorEvent.Message
+			}
+			if monitorEvent.Message != nil {
+				msg := *monitorEvent.Message
 
-					if msg.Type == monitor.MessageGeneric && msg.Generic == nil {
-						mon.ready[msg.Instance] = false
-						delete(mon.ready, msg.Instance)
-						continue
-					}
-					if msg.Generic != nil {
-						var greeting Greeting
-						if err := json.Unmarshal(msg.Generic, &greeting); err == nil {
-							// Verify that the unmarshaled greeting has the expected QMP structure
-							if greeting.QMP.Version.Qemu.Major != 0 || greeting.QMP.Version.Qemu.Minor != 0 || greeting.QMP.Version.Qemu.Micro != 0 {
-								if req, reqErr := qapi.PrepareQmpCapabilitiesRequest(qapi.QObjQmpCapabilitiesArg{}); reqErr == nil {
-									if ch, chErr := qapiClient.Execute(msg.Instance, client.Request(*req)); chErr == nil {
-										res, resOk := ch.Get(context.Background(), -1)
-										if resOk && res.Return != nil {
-											mon.ready[msg.Instance] = true
-											slog.Info("QMP is ready", "instance", msg.Instance)
-											for reqId, instance := range requests {
-												if instance == msg.Instance {
-													delete(requests, reqId)
-												}
+				if msg.Type == monitor.MessageGeneric && msg.Generic == nil {
+					mon.ready[msg.Instance] = false
+					delete(mon.ready, msg.Instance)
+					continue
+				}
+				if msg.Generic != nil {
+					var greeting Greeting
+					if err := json.Unmarshal(msg.Generic, &greeting); err == nil {
+						// Verify that the unmarshaled greeting has the expected QMP structure
+						if greeting.QMP.Version.Qemu.Major != 0 || greeting.QMP.Version.Qemu.Minor != 0 || greeting.QMP.Version.Qemu.Micro != 0 {
+							if req, reqErr := qapi.PrepareQmpCapabilitiesRequest(qapi.QObjQmpCapabilitiesArg{}); reqErr == nil {
+								if ch, chErr := qapiClient.Execute(msg.Instance, client.Request(*req)); chErr == nil {
+									res, resOk := ch.Get(context.Background(), -1)
+									if resOk && res.Return != nil {
+										mon.ready[msg.Instance] = true
+										slog.Info("QMP is ready", "instance", msg.Instance)
+										for reqId, instance := range requests {
+											if instance == msg.Instance {
+												delete(requests, reqId)
 											}
-											continue
 										}
+										continue
 									}
 								}
 							}
 						}
-						var result client.QAPIResult
-						if err := json.Unmarshal(msg.Generic, &result); err == nil {
-							if reqId, reqIdOk := requests[result.Id]; reqIdOk && result.Error == nil {
+					}
+					var result client.QAPIResult
+					if err := json.Unmarshal(msg.Generic, &result); err == nil {
+						if reqId, reqIdOk := requests[result.Id]; reqIdOk {
+							if result.Error == nil {
 								mon.ready[reqId] = true
 								slog.Info("QGA is ready", "instance", reqId)
-								delete(requests, result.Id)
 							}
+							delete(requests, result.Id)
 						}
 					}
 				}

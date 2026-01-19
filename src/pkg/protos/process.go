@@ -105,28 +105,36 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 			}
 		case event, ok := <-ch:
 			if ok {
-				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				errorCh := make(chan error)
+				ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 				instances[event.Id] = &instanceState{inst: event.Instance, cancel: cancel}
 				go func(ctx context.Context) {
 					err := monitor.Add(ctx, event.Id, event.Instance.QMP, process.PREFIX_QMP)
-					if err != nil && ctx.Err() == nil {
-						slog.Error("could not add QMP instance to monitor", "instance", event.Id, "error", err)
+					if err != nil {
+						errorCh <- fmt.Errorf("could not add QMP instance to monitor: %w", err)
 					}
 				}(ctx)
 				go func(ctx context.Context) {
 					err := monitor.Add(ctx, event.Id, event.Instance.QGA, process.PREFIX_QGA)
-					if err != nil && ctx.Err() == nil {
-						slog.Error("could not add QGA instance to monitor", "instance", event.Id, "error", err)
+					if err != nil {
+						errorCh <- fmt.Errorf("could not add QGA instance to monitor: %w", err)
 					}
 				}(ctx)
 				go func(event *InstanceEvent, ctx context.Context) {
+					defer cancel()
 					select {
 					case <-event.Instance.Done:
-						slog.Debug("Instance stopped", "instance", event.Id)
+						slog.Info("Instance stopped", "instance", event.Id)
 						removeCh <- event.Id
+						return
+					case err := <-errorCh:
+						slog.Error("Failed to add instance to monitor", "instance", event.Id, "error", err)
 					case <-ctx.Done():
-						slog.Info("Shutting down monitoring goroutine", "instance", event.Id)
+						slog.Warn("Instance monitoring context deadline exceeded", "instance", event.Id)
 					}
+					<-event.Instance.Done
+					slog.Info("Instance stopped", "instance", event.Id)
+					removeCh <- event.Id
 				}(event, ctx)
 			}
 		}
