@@ -4,6 +4,7 @@ package services.v1;
 
 import "settings/v1/settings.proto";
 import "google/protobuf/empty.proto";
+import "vm/statemachine/v1/statemachine.proto";
 
 option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
 
@@ -20,7 +21,7 @@ message QemuConfig {
 	string qmp = 5;
 	string qga = 6;
 	string image = 7;
-	string userdata = 8;
+	vm.statemachine.v1.CloudInit cloud_init = 8;
 	settings.v1.VM hardware = 9;
 
 	string err_file_path = 10;

@@ -11,6 +11,7 @@ import (
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	v1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
@@ -98,7 +99,7 @@ func newManager(rootDir string, qemuEndpoint string, state controller.State, ima
 
 // NewVMInstance creates a new VM instance with a state machine.
 func (m *Manager) Create(id, imageId string,
-	cpus uint32, memory, disk uint32, userdata *string) error {
+	cpus uint32, memory, disk uint32, cloudInit *v1.CloudInit) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -121,11 +122,11 @@ func (m *Manager) Create(id, imageId string,
 			Memory: memory,
 			Disk:   disk,
 		},
-		Path:     imageUrl,
-		Id:       id,
-		Hwaddr:   &hwaddr,
-		State:    vmv1.State_STATE_STOPPED,
-		Userdata: userdata,
+		Path:      imageUrl,
+		Id:        id,
+		Hwaddr:    &hwaddr,
+		State:     vmv1.State_STATE_STOPPED,
+		Cloudinit: cloudInit,
 	})
 	if instanceErr != nil {
 		return instanceErr
@@ -204,8 +205,8 @@ func (m *Manager) Info(id string) ([]*servicesv1.Info, error) {
 			State:   inst.State.String(),
 			Details: inst.Hardware,
 		}
-		if inst.Userdata != nil {
-			info.Userdata = *inst.Userdata
+		if inst.Cloudinit != nil {
+			info.CloudInit = inst.Cloudinit
 		}
 		if inst.Hwaddr != nil {
 			info.Hwaddr = *inst.Hwaddr
@@ -305,10 +306,6 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 	if err := localUtils.TouchFile(OutFilePath); err != nil {
 		return fmt.Errorf("failed to touch file: %v", err)
 	}
-	userdata := ""
-	if instance.Userdata != nil {
-		userdata = *instance.Userdata
-	}
 	startResp, startErr := servicesv1.NewQemuServiceClient(m.qemuConn).Start(context.Background(), &servicesv1.QemuServiceStartRequest{
 		Config: &servicesv1.QemuConfig{
 			Id:    instance.Id,
@@ -323,7 +320,7 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 			},
 			ErrFilePath: ErrFilePath,
 			OutFilePath: OutFilePath,
-			Userdata:    userdata,
+			CloudInit:   instance.Cloudinit,
 		},
 		Pid: instance.Pid,
 	})

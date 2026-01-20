@@ -22,6 +22,11 @@ enum Event {
     EVENT_QUIT = 4;
 }
 
+message CloudInit {
+	string userdata = 1;
+	string network_config = 2;
+}
+
 message Instance {
     string id = 1;
     settings.v1.VM hardware = 2;
@@ -29,5 +34,5 @@ message Instance {
     string path = 4;
     State state = 5;
     optional int32 pid = 6;
-    optional string userdata = 7;
+    CloudInit cloudinit = 7;
 }
