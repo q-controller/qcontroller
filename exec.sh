@@ -35,4 +35,4 @@ docker run --rm -it -v "${script_dir}:${script_dir}" \
     -e GOMODCACHE=${CACHE_DIR}/.go-mod-cache \
     -e GOOS=${GOOS} \
     $(docker build -q --target pre-build . -f Dockerfile --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)) \
-    $@
+    "$*"
