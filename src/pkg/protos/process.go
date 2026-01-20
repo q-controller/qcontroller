@@ -161,12 +161,20 @@ func (q *QemuServer) Start(ctx context.Context,
 			}
 		}
 
+		cloudInit := qemu.CloudInitConfig{}
+		if req.Config.CloudInit != nil {
+			cloudInit = qemu.CloudInitConfig{
+				Userdata:      req.Config.CloudInit.Userdata,
+				NetworkConfig: req.Config.CloudInit.NetworkConfig,
+			}
+		}
+
 		inst, qemuInstanceErr := qemu.Start(req.Config.Id, req.Config.Image, req.Config.OutFilePath, req.Config.ErrFilePath, qemu.Config{
-			Cpus:     req.Config.Hardware.Cpus,
-			Memory:   req.Config.Hardware.Memory,
-			Disk:     req.Config.Hardware.Disk,
-			HwAddr:   req.Config.Network.Mac,
-			UserData: req.Config.Userdata,
+			Cpus:      req.Config.Hardware.Cpus,
+			Memory:    req.Config.Hardware.Memory,
+			Disk:      req.Config.Hardware.Disk,
+			HwAddr:    req.Config.Network.Mac,
+			CloudInit: cloudInit,
 		})
 
 		if qemuInstanceErr != nil {
