@@ -132,7 +132,8 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
                 "lease_time": 86400,
                 "dns": ["8.8.8.8", "8.8.4.4"],
                 "lease_file": "${RUNDIR}/qcontroller-dhcp-leases"
-            }
+            },
+            "start_dns": true
         }
     }
 }

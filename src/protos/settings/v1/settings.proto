@@ -27,6 +27,7 @@ message Network {
     string gateway_ip = 2;
     string bridge_ip = 3;
     Dhcp dhcp = 4;
+    bool start_dns = 5;
 }
 
 message LinuxSettings {
