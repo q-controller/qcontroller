@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/q-controller/network-utils/src/utils/network/dhcp"
 	"github.com/q-controller/network-utils/src/utils/network/ifc"
@@ -16,6 +17,7 @@ import (
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 
+	dnsresolver "github.com/q-controller/network-utils/src/utils/network/dns"
 	"github.com/spf13/cobra"
 )
 
@@ -61,6 +63,22 @@ var qemuCmd = &cobra.Command{
 
 		if inNamespace {
 			dns := []net.IP{}
+			if config.GetLinuxSettings().Network.StartDns {
+				ip, _, ipErr := net.ParseCIDR(config.GetLinuxSettings().Network.BridgeIp)
+				if ipErr != nil {
+					return fmt.Errorf("failed to parse bridge ip: %w", ipErr)
+				}
+				forwarder, forwarderErr := dnsresolver.NewDNSForwarder(cmd.Context(),
+					dnsresolver.WithForwarderAddress(ip.String()),
+					dnsresolver.WithForwarderTimeout(2*time.Second),
+				)
+				if forwarderErr != nil {
+					return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
+				}
+				defer forwarder.Stop()
+				dns = append(dns, ip)
+			}
+
 			for _, ipStr := range config.GetLinuxSettings().Network.Dhcp.Dns {
 				ip := net.ParseIP(ipStr)
 				if ip == nil {
