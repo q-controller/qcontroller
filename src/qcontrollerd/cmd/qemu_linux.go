@@ -62,23 +62,11 @@ var qemuCmd = &cobra.Command{
 		}
 
 		if inNamespace {
-			dns := []net.IP{}
-			if config.GetLinuxSettings().Network.StartDns {
-				ip, _, ipErr := net.ParseCIDR(config.GetLinuxSettings().Network.BridgeIp)
-				if ipErr != nil {
-					return fmt.Errorf("failed to parse bridge ip: %w", ipErr)
-				}
-				forwarder, forwarderErr := dnsresolver.NewDNSForwarder(cmd.Context(),
-					dnsresolver.WithForwarderAddress(ip.String()),
-					dnsresolver.WithForwarderTimeout(2*time.Second),
-				)
-				if forwarderErr != nil {
-					return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
-				}
-				defer forwarder.Stop()
-				dns = append(dns, ip)
+			gatewayIp, _, gatewayIpErr := net.ParseCIDR(config.GetLinuxSettings().Network.GatewayIp)
+			if gatewayIpErr != nil {
+				return fmt.Errorf("failed to parse gateway ip: %w", gatewayIpErr)
 			}
-
+			dns := []net.IP{gatewayIp}
 			for _, ipStr := range config.GetLinuxSettings().Network.Dhcp.Dns {
 				ip := net.ParseIP(ipStr)
 				if ip == nil {
@@ -100,6 +88,19 @@ var qemuCmd = &cobra.Command{
 
 			return Entrypoint(config, done)
 		} else {
+			ip, _, ipErr := net.ParseCIDR(config.GetLinuxSettings().Network.GatewayIp)
+			if ipErr != nil {
+				return fmt.Errorf("failed to parse bridge ip: %w", ipErr)
+			}
+			forwarder, forwarderErr := dnsresolver.NewDNSForwarder(cmd.Context(),
+				dnsresolver.WithForwarderAddress(ip.String()),
+				dnsresolver.WithResolvconfPath(dnsresolver.ResolvConfPath),
+				dnsresolver.WithForwarderTimeout(2*time.Second),
+			)
+			if forwarderErr != nil {
+				return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
+			}
+			defer forwarder.Stop()
 			netw, netwErr := network.NewNetwork(
 				network.WithName(linuxConfig.Name),
 				network.WithGateway(linuxConfig.GatewayIp),
