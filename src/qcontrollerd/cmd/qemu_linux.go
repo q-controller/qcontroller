@@ -92,15 +92,23 @@ var qemuCmd = &cobra.Command{
 			if ipErr != nil {
 				return fmt.Errorf("failed to parse bridge ip: %w", ipErr)
 			}
-			forwarder, forwarderErr := dnsresolver.NewDNSForwarder(cmd.Context(),
-				dnsresolver.WithForwarderAddress(ip.String()),
-				dnsresolver.WithResolvconfPath(dnsresolver.ResolvConfPath),
-				dnsresolver.WithForwarderTimeout(2*time.Second),
-			)
-			if forwarderErr != nil {
-				return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
+
+			if config.GetLinuxSettings().Network.Dns != nil {
+				resolvConf := dnsresolver.ResolvConfPath
+				if config.GetLinuxSettings().Network.Dns.ResolvConf != "" {
+					resolvConf = config.GetLinuxSettings().Network.Dns.ResolvConf
+				}
+				forwarder, forwarderErr := dnsresolver.NewDNSForwarder(cmd.Context(),
+					dnsresolver.WithForwarderAddress(ip.String()),
+					dnsresolver.WithResolvconfPath(resolvConf),
+					dnsresolver.WithForwarderTimeout(2*time.Second),
+				)
+				if forwarderErr != nil {
+					return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
+				}
+				defer forwarder.Stop()
 			}
-			defer forwarder.Stop()
+
 			netw, netwErr := network.NewNetwork(
 				network.WithName(linuxConfig.Name),
 				network.WithGateway(linuxConfig.GatewayIp),

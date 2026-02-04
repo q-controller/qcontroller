@@ -22,12 +22,17 @@ message Dhcp {
     string lease_file = 5;
 }
 
+message Dns {
+    string zone = 1;
+    string resolv_conf = 2;
+}
+
 message Network {
     string name = 1;
     string gateway_ip = 2;
     string bridge_ip = 3;
     Dhcp dhcp = 4;
-    bool start_dns = 5;
+    Dns dns = 5;
 }
 
 message LinuxSettings {
