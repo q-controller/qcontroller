@@ -93,22 +93,6 @@ var qemuCmd = &cobra.Command{
 				return fmt.Errorf("failed to parse bridge ip: %w", ipErr)
 			}
 
-			if config.GetLinuxSettings().Network.Dns != nil {
-				resolvConf := dnsresolver.ResolvConfPath
-				if config.GetLinuxSettings().Network.Dns.ResolvConf != "" {
-					resolvConf = config.GetLinuxSettings().Network.Dns.ResolvConf
-				}
-				forwarder, forwarderErr := dnsresolver.NewDNSForwarder(cmd.Context(),
-					dnsresolver.WithForwarderAddress(ip.String()),
-					dnsresolver.WithResolvconfPath(resolvConf),
-					dnsresolver.WithForwarderTimeout(2*time.Second),
-				)
-				if forwarderErr != nil {
-					return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
-				}
-				defer forwarder.Stop()
-			}
-
 			netw, netwErr := network.NewNetwork(
 				network.WithName(linuxConfig.Name),
 				network.WithGateway(linuxConfig.GatewayIp),
@@ -118,6 +102,17 @@ var qemuCmd = &cobra.Command{
 			)
 			if netwErr != nil {
 				return fmt.Errorf("failed to create network: %w", netwErr)
+			}
+
+			if config.GetLinuxSettings().Network.Dns != nil {
+				forwarder, forwarderErr := dnsresolver.NewDNSFailoverForwarder(cmd.Context(),
+					dnsresolver.WithForwarderAddress(ip.String()),
+					dnsresolver.WithForwarderTimeout(2*time.Second),
+				)
+				if forwarderErr != nil {
+					return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
+				}
+				defer forwarder.Stop()
 			}
 
 			subscription, subscribeErr := ifc.SubscribeDefaultInterfaceChanges()
