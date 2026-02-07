@@ -11,10 +11,11 @@ import (
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/qemu/process"
+	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
 	"google.golang.org/grpc"
 )
 
-func Entrypoint(config *settingsv1.QemuConfig, stop <-chan struct{}) error {
+func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolver, stop <-chan struct{}) error {
 	lis, lisErr := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
 	if lisErr != nil {
 		return fmt.Errorf("failed to listen: %w", lisErr)
@@ -58,7 +59,7 @@ func Entrypoint(config *settingsv1.QemuConfig, stop <-chan struct{}) error {
 		}
 	}()
 
-	reg, regErr := protos.NewQemuService(monitor, config)
+	reg, regErr := protos.NewQemuService(monitor, addressResolver, config)
 	if regErr != nil {
 		return fmt.Errorf("failed to create server %w", regErr)
 	}

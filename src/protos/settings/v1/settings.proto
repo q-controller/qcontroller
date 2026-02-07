@@ -39,6 +39,10 @@ message LinuxSettings {
     Network network = 1;
 }
 
+message MacosSettings {
+    string subnet = 1;
+}
+
 message ControllerConfig {
     uint32 port = 1;
     Cache cache = 2;
@@ -53,6 +57,7 @@ message QemuConfig {
 
     oneof platform_specific {
         LinuxSettings linux_settings = 4;
+        MacosSettings macos_settings = 5;
     }
 }
 

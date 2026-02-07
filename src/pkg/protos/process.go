@@ -3,25 +3,27 @@ package protos
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"time"
 
 	"github.com/q-controller/qapi-client/src/client"
 	"github.com/q-controller/qapi-client/src/monitor"
 	"github.com/q-controller/qcontroller/src/generated/qapi"
-	"github.com/q-controller/qcontroller/src/generated/qga"
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/qemu/process"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network"
+	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
 	"github.com/q-controller/qemu-client/pkg/qemu"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
+
+var ErrInstanceNotRunning = errors.New("instance not running")
 
 type QemuServer struct {
 	servicesv1.UnimplementedQemuServiceServer
@@ -31,6 +33,7 @@ type QemuServer struct {
 	commandCh            chan<- Command
 	shutdownCh           chan<- struct{}
 	forceStopCh          chan<- string
+	addressResolver      ip.AddressResolver
 }
 
 type InstanceEvent struct {
@@ -73,6 +76,7 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 			return
 		case id, ok := <-removeCh:
 			if ok {
+				slog.Debug("Removing instance from monitor", "id", id)
 				if state, exists := instances[id]; exists {
 					state.cancel()
 				}
@@ -99,6 +103,11 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 					command.Result <- CommandResult{
 						Result: result,
 						Error:  resErr,
+					}
+				} else {
+					command.Result <- CommandResult{
+						Result: nil,
+						Error:  ErrInstanceNotRunning,
 					}
 				}
 				close(command.Result)
@@ -231,11 +240,35 @@ func (q *QemuServer) Status(req *servicesv1.QemuServiceStatusRequest,
 		case <-ctx.Done():
 			return nil
 		case <-timer.C:
-			resp, respErr := q.Info(ctx, &servicesv1.QemuServiceInfoRequest{
-				Ids: []string{req.Id},
-			})
-			if respErr != nil {
-				slog.Error("Failed to get VM info", "error", respErr)
+			running := false
+			if statReq, reqErr := qapi.PrepareQueryStatusRequest(); reqErr != nil {
+				slog.Error("Failed to prepare QMP status request", "error", reqErr)
+			} else {
+				ch := make(chan CommandResult)
+				q.commandCh <- Command{
+					Id:          req.Id,
+					RequestKind: RequestKindQMP,
+					Request:     client.Request(*statReq),
+					Result:      ch,
+				}
+				res := <-ch
+				if res.Error != nil {
+					slog.Debug("Failed to execute QMP status command", "error", res.Error)
+				} else if res.Result != nil {
+					if r, ok := res.Result.Get(ctx, 2*time.Second); ok && r.Return != nil {
+						var status qapi.StatusInfo
+						if unmarshalErr := json.Unmarshal(r.Return, &status); unmarshalErr == nil {
+							slog.Debug("QMP status", "instance", req.Id, "status", status.Status)
+							if status.Status == "running" {
+								running = true
+							}
+						} else {
+							slog.Error("Failed to unmarshal QMP status response", "error", unmarshalErr)
+						}
+					}
+				}
+			}
+			if !running {
 				if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
 					Event: &servicesv1.Event{
 						Id: req.Id,
@@ -263,7 +296,11 @@ func (q *QemuServer) Status(req *servicesv1.QemuServiceStatusRequest,
 			}); sendErr != nil {
 				return sendErr
 			}
-			if len(resp.Info) > 0 {
+			if resp, respErr := q.Info(ctx, &servicesv1.QemuServiceInfoRequest{
+				Ids: []string{req.Id},
+			}); respErr != nil || len(resp.Info) == 0 {
+				slog.Debug("Failed to get VM info", "error", respErr)
+			} else {
 				info := resp.Info[0]
 				if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
 					Event: &servicesv1.Event{
@@ -281,51 +318,123 @@ func (q *QemuServer) Status(req *servicesv1.QemuServiceStatusRequest,
 	}
 }
 
+// executeQMPCommand sends a QMP command and waits for the result.
+func (q *QemuServer) executeQMPCommand(ctx context.Context, id string, req client.Request) ([]byte, error) {
+	ch := make(chan CommandResult)
+	q.commandCh <- Command{
+		Id:          id,
+		RequestKind: RequestKindQMP,
+		Request:     req,
+		Result:      ch,
+	}
+
+	res := <-ch
+	if res.Error != nil {
+		return nil, res.Error
+	}
+
+	if res.Result == nil {
+		return nil, fmt.Errorf("no result from QMP command")
+	}
+
+	r, ok := res.Result.Get(ctx, 2*time.Second)
+	if !ok || r.Return == nil {
+		return nil, fmt.Errorf("timeout or empty response from QMP command")
+	}
+
+	return r.Return, nil
+}
+
+// getMacAddressForInstance retrieves the MAC address for a VM instance via QMP.
+func (q *QemuServer) getMacAddressForInstance(ctx context.Context, id string) (string, error) {
+	path := fmt.Sprintf("/machine/peripheral/%s/virtio-backend", id)
+
+	// First, list properties to check if "mac" exists
+	listReq, err := qapi.PrepareQomListRequest(qapi.QObjQomListArg{Path: path})
+	if err != nil {
+		return "", fmt.Errorf("failed to prepare qom-list request: %w", err)
+	}
+
+	listResult, err := q.executeQMPCommand(ctx, id, client.Request(*listReq))
+	if err != nil {
+		return "", fmt.Errorf("failed to list QOM properties: %w", err)
+	}
+
+	var properties qapi.ObjectPropertyInfoList
+	if err := json.Unmarshal(listResult, &properties); err != nil {
+		return "", fmt.Errorf("failed to unmarshal QOM properties: %w", err)
+	}
+
+	// Find the mac property
+	var macProp *qapi.ObjectPropertyInfo
+	for i := range properties {
+		if properties[i].Name == "mac" {
+			macProp = &properties[i]
+			break
+		}
+	}
+
+	if macProp == nil {
+		return "", fmt.Errorf("mac property not found for instance %s", id)
+	}
+
+	if macProp.Type != "str" {
+		return "", fmt.Errorf("unexpected mac property type: %s", macProp.Type)
+	}
+
+	// Get the MAC address value
+	getReq, err := qapi.PrepareQomGetRequest(qapi.QObjQomGetArg{
+		Path:     path,
+		Property: "mac",
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to prepare qom-get request: %w", err)
+	}
+
+	getResult, err := q.executeQMPCommand(ctx, id, client.Request(*getReq))
+	if err != nil {
+		return "", fmt.Errorf("failed to get MAC address: %w", err)
+	}
+
+	var macAddress string
+	if err := json.Unmarshal(getResult, &macAddress); err != nil {
+		return "", fmt.Errorf("failed to unmarshal MAC address: %w", err)
+	}
+
+	return macAddress, nil
+}
+
+// getIpAddressesForInstance retrieves IP addresses for a VM by looking up its MAC in the ARP cache.
+func (q *QemuServer) getIpAddressesForInstance(ctx context.Context, id string) ([]string, error) {
+	mac, err := q.getMacAddressForInstance(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	ipaddr, err := q.addressResolver.LookupIP(mac)
+	if err != nil {
+		// MAC not found in ARP cache yet - not an error, just no IP available
+		slog.Debug("MAC not found in ARP cache", "instance", id, "mac", mac, "error", err)
+		return nil, nil
+	}
+
+	return []string{ipaddr.String()}, nil
+}
+
 func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceInfoRequest) (*servicesv1.QemuServiceInfoResponse, error) {
 	res := []*servicesv1.QemuServiceInfo{}
 	for _, id := range request.Ids {
-		ipaddresses := []string{}
-		if req, reqErr := qga.PrepareGuestNetworkGetInterfacesRequest(); reqErr == nil {
-			ch := make(chan CommandResult)
-			q.commandCh <- Command{
-				Id:          id,
-				RequestKind: RequestKindQGA,
-				Request:     client.Request(*req),
-				Result:      ch,
-			}
-			res := <-ch
-			if res.Error == nil {
-				if res.Result != nil {
-					res, resOk := res.Result.Get(ctx, -1)
-					if resOk && res.Return != nil {
-						var networkInterfaces qga.GuestNetworkInterfaceList
-						if unmarshalErr := json.Unmarshal(res.Return, &networkInterfaces); unmarshalErr == nil {
-							for _, networkInterface := range networkInterfaces {
-								if networkInterface.IpAddresses != nil {
-									for _, ipaddress := range *networkInterface.IpAddresses {
-										ip := net.ParseIP(ipaddress.IpAddress)
-										if !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-											ipaddresses = append(ipaddresses, ipaddress.IpAddress)
-										}
-									}
-								}
-							}
-						}
-					}
-				} else {
-					return nil, fmt.Errorf("no result from QGA for instance %s", id)
-				}
-			} else {
-				if res.Error == process.ErrNotReady {
-					continue
-				}
-				return nil, res.Error
-			}
+		ipaddresses, ipaddressesErr := q.getIpAddressesForInstance(ctx, id)
+		if ipaddressesErr != nil {
+			slog.Debug("Failed to get IP addresses", "instance", id, "error", ipaddressesErr)
+			continue
 		}
-		res = append(res, &servicesv1.QemuServiceInfo{
-			Name:        id,
-			Ipaddresses: ipaddresses,
-		})
+		if len(ipaddresses) > 0 {
+			res = append(res, &servicesv1.QemuServiceInfo{
+				Name:        id,
+				Ipaddresses: ipaddresses,
+			})
+		}
 	}
 
 	return &servicesv1.QemuServiceInfoResponse{
@@ -333,7 +442,7 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 	}, nil
 }
 
-func NewQemuService(monitor *process.InstanceMonitor, config *settingsv1.QemuConfig) (servicesv1.QemuServiceServer, error) {
+func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.AddressResolver, config *settingsv1.QemuConfig) (servicesv1.QemuServiceServer, error) {
 	instanceCh := make(chan *InstanceEvent)
 	commandCh := make(chan Command)
 	stop := make(chan struct{})
@@ -343,6 +452,7 @@ func NewQemuService(monitor *process.InstanceMonitor, config *settingsv1.QemuCon
 		commandCh:            commandCh,
 		shutdownCh:           stop,
 		forceStopCh:          forceStop,
+		addressResolver:      addressResolver,
 	}
 
 	if linuxSettings := config.GetLinuxSettings(); linuxSettings != nil {
