@@ -4,12 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
+	"github.com/q-controller/qcontroller/src/pkg/utils/network/arp"
 
 	"github.com/spf13/cobra"
 )
@@ -44,7 +47,32 @@ var qemuCmd = &cobra.Command{
 			close(done)
 		}()
 
-		return Entrypoint(config, done)
+		if config.GetMacosSettings() == nil || config.GetMacosSettings().Subnet == "" {
+			return errors.New("macOS settings are not configured")
+		}
+
+		_, ipNet, ipErr := net.ParseCIDR(config.GetMacosSettings().Subnet)
+		if ipErr != nil {
+			return fmt.Errorf("invalid subnet format: %w", ipErr)
+		}
+
+		scanner, scannerErr := arp.NewScanner("", ipNet)
+		if scannerErr != nil {
+			return fmt.Errorf("failed to create arp scanner: %w", scannerErr)
+		}
+
+		resolver, resolverErr := arp.NewResolver(
+			cmd.Context(),
+			arp.WithInterval(2*time.Second),
+			arp.WithTimeout(2*time.Second),
+			arp.WithScanner(scanner),
+		)
+		if resolverErr != nil {
+			return fmt.Errorf("failed to create arp resolver: %w", resolverErr)
+		}
+		defer resolver.Close()
+
+		return Entrypoint(config, resolver, done)
 	},
 }
 

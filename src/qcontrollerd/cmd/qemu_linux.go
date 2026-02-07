@@ -16,6 +16,7 @@ import (
 	"github.com/q-controller/network-utils/src/utils/network/network"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
+	"github.com/q-controller/qcontroller/src/pkg/utils/network/arp"
 
 	dnsresolver "github.com/q-controller/network-utils/src/utils/network/dns"
 	"github.com/spf13/cobra"
@@ -62,11 +63,7 @@ var qemuCmd = &cobra.Command{
 		}
 
 		if inNamespace {
-			gatewayIp, _, gatewayIpErr := net.ParseCIDR(config.GetLinuxSettings().Network.GatewayIp)
-			if gatewayIpErr != nil {
-				return fmt.Errorf("failed to parse gateway ip: %w", gatewayIpErr)
-			}
-			dns := []net.IP{gatewayIp}
+			dns := []net.IP{linuxConfig.GatewayIp}
 			for _, ipStr := range config.GetLinuxSettings().Network.Dhcp.Dns {
 				ip := net.ParseIP(ipStr)
 				if ip == nil {
@@ -86,7 +83,23 @@ var qemuCmd = &cobra.Command{
 			}
 			defer dhcpServer.Stop()
 
-			return Entrypoint(config, done)
+			scanner, scannerErr := arp.NewScanner(linuxConfig.Name, linuxConfig.Subnet)
+			if scannerErr != nil {
+				return fmt.Errorf("failed to create arp scanner: %w", scannerErr)
+			}
+
+			resolver, resolverErr := arp.NewResolver(
+				cmd.Context(),
+				arp.WithInterval(2*time.Second),
+				arp.WithTimeout(2*time.Second),
+				arp.WithScanner(scanner),
+			)
+			if resolverErr != nil {
+				return fmt.Errorf("failed to create arp resolver: %w", resolverErr)
+			}
+			defer resolver.Close()
+
+			return Entrypoint(config, resolver, done)
 		} else {
 			ip, _, ipErr := net.ParseCIDR(config.GetLinuxSettings().Network.GatewayIp)
 			if ipErr != nil {
