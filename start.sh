@@ -11,6 +11,7 @@ HOST_IP=192.168.71.1/24
 BRIDGE_IP=192.168.71.3/24
 START=192.168.71.4/24
 END=192.168.71.254/24
+MACOS_MODE=MODE_SHARED
 CONTROLLER_PORT=8009
 QEMU_PORT=8008
 GATEWAY_PORT=8080
@@ -24,19 +25,20 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)
 
 usage() {
     cat <<EOF
-Usage: $(basename "${BASH_SOURCE[0]}") [-h] --rundir PATH --bin PATH [--interface NAME] [--cidr VALUE]
+Usage: $(basename "${BASH_SOURCE[0]}") [-h] --rundir PATH --bin PATH [--interface NAME] [--cidr VALUE] [--start IP] [--end IP]
 
 Starts qcontrollerd
 
 Available options:
 
--h, --help      Print this help and exit
---bin           Path to qcontrollerd binary
---rundir        Path to the rundir
---interface     Interface name [default: ${INTERFACE_NAME}] (Linux only)
---cidr          Gateway CIDR [default: ${GATEWAY}] (Linux only)
---start         Start of DHCP range (Linux only) [default: ${START}]
---end           End of DHCP range (Linux only) [default: ${END}]
+-h, --help         Print this help and exit
+--bin              Path to qcontrollerd binary
+--rundir           Path to the rundir
+--interface        Interface name [default: ${INTERFACE_NAME}] (Linux: bridge name, macOS: not used in shared mode)
+--cidr             Gateway CIDR [default: ${HOST_IP}] (Linux only)
+--start            Start of DHCP/IP range in CIDR notation [default: ${START}] (both platforms)
+--end              End of DHCP/IP range in CIDR notation [default: ${END}] (both platforms)
+--macos-mode       macOS network mode: MODE_BRIDGED or MODE_SHARED [default: ${MACOS_MODE}]
 EOF
     exit
 }
@@ -62,9 +64,7 @@ parse_params() {
         case "${1-}" in
             -h | --help) usage ;;
             --interface)
-                if [[ "$OS_TYPE" == "Linux" ]]; then
-                    INTERFACE_NAME="${2-}"
-                fi
+                INTERFACE_NAME="${2-}"
                 shift
                 ;;
             --cidr)
@@ -74,15 +74,15 @@ parse_params() {
                 shift
                 ;;
             --start)
-                if [[ "$OS_TYPE" == "Linux" ]]; then
-                    START="${2-}"
-                fi
+                START="${2-}"
                 shift
                 ;;
             --end)
-                if [[ "$OS_TYPE" == "Linux" ]]; then
-                    END="${2-}"
-                fi
+                END="${2-}"
+                shift
+                ;;
+            --macos-mode)
+                MACOS_MODE="${2-}"
                 shift
                 ;;
             --bin)
@@ -141,10 +141,45 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
     }
 }
 EOF
-else
+elif [[ "${MACOS_MODE}" == "MODE_BRIDGED" ]]; then
 cat >${CONFIGDIR}/qemu-config.json <<EOF
 {
-    "port": "${QEMU_PORT}"
+    "port": ${QEMU_PORT},
+    "macosSettings": {
+        "mode": "${MACOS_MODE}",
+        "bridged": {
+            "interface": "${INTERFACE_NAME}"
+        }
+    }
+}
+EOF
+else
+# Extract IP addresses without CIDR suffix for macOS shared mode
+START_IP=$(echo "${START}" | cut -d'/' -f1)
+END_IP=$(echo "${END}" | cut -d'/' -f1)
+
+# Calculate subnet from START CIDR (e.g., 192.168.71.4/24 -> 192.168.71.0/24)
+IFS='/' read -r IP CIDR_BITS <<< "${START}"
+IFS='.' read -r i1 i2 i3 i4 <<< "${IP}"
+MASK=$((0xFFFFFFFF << (32 - CIDR_BITS) & 0xFFFFFFFF))
+NETWORK_IP=$(printf "%d.%d.%d.%d" \
+    $(((i1 & (MASK >> 24)) & 0xFF)) \
+    $(((i2 & (MASK >> 16)) & 0xFF)) \
+    $(((i3 & (MASK >> 8)) & 0xFF)) \
+    $(((i4 & MASK) & 0xFF)))
+SUBNET="${NETWORK_IP}/${CIDR_BITS}"
+
+cat >${CONFIGDIR}/qemu-config.json <<EOF
+{
+    "port": ${QEMU_PORT},
+    "macosSettings": {
+        "mode": "${MACOS_MODE}",
+        "shared": {
+            "subnet": "${SUBNET}",
+            "start_address": "${START_IP}",
+            "end_address": "${END_IP}"
+        }
+    }
 }
 EOF
 fi
