@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,7 +26,13 @@ func (p *Publisher) VMUpdated(info *v1.Info) error {
 	defer p.mu.Unlock()
 	prev, exists := p.cache[info.Name]
 	if exists && proto.Equal(prev, info) {
+		slog.Debug("Skipping duplicate VM event", "vm", info.Name, "state", info.State, "ips", info.Ipaddresses)
 		return nil // No change, skip send
+	}
+	if exists {
+		slog.Info("VM info changed", "vm", info.Name, "state", info.State, "ips", info.Ipaddresses, "prev_ips", prev.Ipaddresses)
+	} else {
+		slog.Info("First VM event", "vm", info.Name, "state", info.State, "ips", info.Ipaddresses)
 	}
 	p.cache[info.Name] = proto.Clone(info).(*v1.Info)
 	update := &v1.Update{
