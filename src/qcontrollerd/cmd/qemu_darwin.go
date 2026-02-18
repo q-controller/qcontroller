@@ -12,6 +12,7 @@ import (
 
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
+	"github.com/q-controller/qcontroller/src/pkg/utils/network"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/arp"
 
 	"github.com/spf13/cobra"
@@ -47,16 +48,48 @@ var qemuCmd = &cobra.Command{
 			close(done)
 		}()
 
-		if config.GetMacosSettings() == nil || config.GetMacosSettings().Subnet == "" {
-			return errors.New("macOS settings are not configured")
+		var subnet *net.IPNet
+		var scannerIfcName string
+
+		macosSettings := config.GetMacosSettings()
+		if macosSettings != nil && macosSettings.Mode == settingsv1.MacosSettings_MODE_BRIDGED {
+			// Bridged mode: use specified interface (or default) and get its subnet
+			bridgeInterface, bridgeErr := network.GetBridgeInterface(config)
+			if bridgeErr != nil {
+				return fmt.Errorf("failed to get bridge interface: %w", bridgeErr)
+			}
+
+			iface, ifaceErr := net.InterfaceByName(bridgeInterface)
+			if ifaceErr != nil {
+				return fmt.Errorf("failed to get interface by name: %w", ifaceErr)
+			}
+			addrs, addrsErr := iface.Addrs()
+			if addrsErr != nil {
+				return fmt.Errorf("failed to get interface addresses: %w", addrsErr)
+			}
+			if len(addrs) == 0 {
+				return fmt.Errorf("no addresses found for interface %s", bridgeInterface)
+			}
+			ipNet, ok := addrs[0].(*net.IPNet)
+			if !ok {
+				return fmt.Errorf("address is not an IPNet: %v", addrs[0])
+			}
+			subnet = ipNet
+			scannerIfcName = bridgeInterface
+		} else {
+			// Shared mode: get subnet from config, auto-discover interface
+			if macosSettings == nil || macosSettings.Shared == nil || macosSettings.Shared.Subnet == "" {
+				return errors.New("macOS shared mode requires subnet configuration")
+			}
+			_, ipNet, parseErr := net.ParseCIDR(macosSettings.Shared.Subnet)
+			if parseErr != nil {
+				return fmt.Errorf("invalid subnet in macOS settings: %w", parseErr)
+			}
+			subnet = ipNet
+			scannerIfcName = "" // auto-discover interface by subnet
 		}
 
-		_, ipNet, ipErr := net.ParseCIDR(config.GetMacosSettings().Subnet)
-		if ipErr != nil {
-			return fmt.Errorf("invalid subnet format: %w", ipErr)
-		}
-
-		scanner, scannerErr := arp.NewScanner("", ipNet)
+		scanner, scannerErr := arp.NewScanner(scannerIfcName, subnet)
 		if scannerErr != nil {
 			return fmt.Errorf("failed to create arp scanner: %w", scannerErr)
 		}
