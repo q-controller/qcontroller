@@ -311,6 +311,19 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 	if err := localUtils.TouchFile(OutFilePath); err != nil {
 		return fmt.Errorf("failed to touch file: %v", err)
 	}
+	cloudInit := instance.Cloudinit
+	if cloudInit == nil || cloudInit.NetworkConfig == "" {
+		if instance.Hwaddr == nil {
+			return fmt.Errorf("cannot generate cloud-init network config: instance %s has no MAC address", instance.Id)
+		}
+		if cloudInit == nil {
+			cloudInit = &vmv1.CloudInit{}
+		}
+		cloudInit.NetworkConfig = fmt.Sprintf(
+			"version: 2\nethernets:\n  id0:\n    match:\n      macaddress: %s\n    dhcp4: true\n    dhcp-identifier: mac\n",
+			*instance.Hwaddr,
+		)
+	}
 	startResp, startErr := servicesv1.NewQemuServiceClient(m.qemuConn).Start(context.Background(), &servicesv1.QemuServiceStartRequest{
 		Config: &servicesv1.QemuConfig{
 			Id:    instance.Id,
@@ -325,7 +338,7 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 			},
 			ErrFilePath: ErrFilePath,
 			OutFilePath: OutFilePath,
-			CloudInit:   instance.Cloudinit,
+			CloudInit:   cloudInit,
 		},
 		Pid: instance.Pid,
 	})
