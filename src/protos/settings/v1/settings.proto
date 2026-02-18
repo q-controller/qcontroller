@@ -40,7 +40,25 @@ message LinuxSettings {
 }
 
 message MacosSettings {
-    string subnet = 1;
+    enum Mode {
+        MODE_UNSPECIFIED = 0;
+        MODE_BRIDGED = 1;
+        MODE_SHARED = 2;
+    }
+
+    message Bridged {
+        string interface = 1;
+    }
+
+    message Shared {
+        string subnet = 1;        // CIDR notation, e.g., "192.168.33.0/24"
+        string start_address = 2; // Start of DHCP range, e.g., "192.168.33.1"
+        string end_address = 3;   // End of DHCP range, e.g., "192.168.33.254"
+    }
+
+    Mode mode = 1;
+    optional Bridged bridged = 2;
+    optional Shared shared = 3;
 }
 
 message ControllerConfig {

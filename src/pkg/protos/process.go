@@ -28,6 +28,7 @@ var ErrInstanceNotRunning = errors.New("instance not running")
 type QemuServer struct {
 	servicesv1.UnimplementedQemuServiceServer
 
+	config               *settingsv1.QemuConfig
 	nm                   network.NetworkManager
 	instanceEventChannel chan<- *InstanceEvent
 	commandCh            chan<- Command
@@ -178,11 +179,17 @@ func (q *QemuServer) Start(ctx context.Context,
 			}
 		}
 
+		platformConfig, platformErr := buildPlatformConfig(q.config)
+		if platformErr != nil {
+			return nil, status.Errorf(codes.Internal, "failed to build platform config: %v", platformErr)
+		}
+
 		inst, qemuInstanceErr := qemu.Start(req.Config.Id, req.Config.Image, req.Config.OutFilePath, req.Config.ErrFilePath, qemu.Config{
 			Cpus:      req.Config.Hardware.Cpus,
 			Memory:    req.Config.Hardware.Memory,
 			Disk:      req.Config.Hardware.Disk,
 			HwAddr:    req.Config.Network.Mac,
+			Platform:  platformConfig,
 			CloudInit: cloudInit,
 		})
 
@@ -448,6 +455,7 @@ func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.Address
 	stop := make(chan struct{})
 	forceStop := make(chan string)
 	q := &QemuServer{
+		config:               config,
 		instanceEventChannel: instanceCh,
 		commandCh:            commandCh,
 		shutdownCh:           stop,
