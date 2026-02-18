@@ -276,13 +276,19 @@ func (m *Manager) eventLoop() {
 						slog.Error("Failed to update state", "instance", event.Id, "error", instanceErr)
 					}
 				case *servicesv1.Event_Info:
-					if eventErr := m.eventsPublisher.VMUpdated(
-						&servicesv1.Info{
-							Name:        inst.Id,
-							State:       inst.State.String(),
-							Ipaddresses: data.Info.Ipaddresses,
-						},
-					); eventErr != nil {
+					info := &servicesv1.Info{
+						Name:        inst.Id,
+						State:       inst.State.String(),
+						Details:     inst.Hardware,
+						Ipaddresses: data.Info.Ipaddresses,
+					}
+					if inst.Cloudinit != nil {
+						info.CloudInit = inst.Cloudinit
+					}
+					if inst.Hwaddr != nil {
+						info.Hwaddr = *inst.Hwaddr
+					}
+					if eventErr := m.eventsPublisher.VMUpdated(info); eventErr != nil {
 						slog.Warn("Failed to publish VM info event", "id", inst.Id, "error", eventErr)
 					}
 				}
@@ -341,6 +347,7 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 	}
 
 	go func(pid int32) {
+		slog.Info("Starting status loop goroutine", "instance", instance.Id, "pid", pid)
 		m.qemuCh <- &servicesv1.Event{
 			Id: instance.Id,
 			EventKind: &servicesv1.Event_Pid{
@@ -354,6 +361,7 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 		for {
 			resp, err := statusResp.Recv()
 			if err == nil {
+				slog.Debug("Received status event", "instance", instance.Id, "event_type", fmt.Sprintf("%T", resp.Event.EventKind))
 				m.qemuCh <- resp.Event
 				switch data := resp.Event.EventKind.(type) {
 				case *servicesv1.Event_Status:

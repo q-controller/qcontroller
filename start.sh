@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 trap cleanup SIGINT SIGTERM ERR EXIT
 
-export LOG_LEVEL=debug
+export LOG_LEVEL=info
 
 INTERFACE_NAME=br0
 HOST_IP=192.168.71.1/24
@@ -211,7 +211,7 @@ EOF
 touch ${LOGDIR}/qemu.out
 touch ${LOGDIR}/qemu.err
 sudo -v
-sudo ${QCONTROLLERD} qemu -c ${CONFIGDIR}/qemu-config.json >${LOGDIR}/qemu.out 2>${LOGDIR}/qemu.err &
+sudo LOG_LEVEL="${LOG_LEVEL}" ${QCONTROLLERD} qemu -c ${CONFIGDIR}/qemu-config.json >${LOGDIR}/qemu.out 2>${LOGDIR}/qemu.err &
 pids+=($!)
 
 # Wait until qemu is ready
