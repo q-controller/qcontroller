@@ -37,6 +37,11 @@ func newRawConn(iface *net.Interface) (rawConn, error) {
 		return nil, fmt.Errorf("failed to set immediate mode: %w", err)
 	}
 
+	if err := setBPFFilterARPReply(fd); err != nil {
+		_ = syscall.Close(fd)
+		return nil, fmt.Errorf("failed to set BPF filter: %w", err)
+	}
+
 	if err := setBPFPromisc(fd, true); err != nil {
 		slog.Debug("Failed to enable promiscuous mode", "error", err)
 	}

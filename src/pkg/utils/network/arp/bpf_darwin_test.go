@@ -4,10 +4,12 @@ package arp
 
 import (
 	"encoding/binary"
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/bpf"
 )
 
 // makeBPFHeader constructs a 20-byte bpf_hdr with the given caplen and datalen.
@@ -86,6 +88,45 @@ func TestBpfPackets_TruncatedPacket(t *testing.T) {
 
 func TestBpfPackets_ZeroCaplen(t *testing.T) {
 	assert.Empty(t, collectFrames(makeBPFHeader(0, 0)))
+}
+
+func TestARPReplyFilter_AcceptsARPReply(t *testing.T) {
+	vm, err := bpf.NewVM(arpReplyFilter)
+	require.NoError(t, err)
+
+	frame := makeARPReplyFrame(
+		net.HardwareAddr{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01},
+		net.IP{192, 168, 1, 42},
+	)
+	verdict, err := vm.Run(frame)
+	require.NoError(t, err)
+	assert.NotZero(t, verdict, "ARP reply should be accepted")
+}
+
+func TestARPReplyFilter_DropsARPRequest(t *testing.T) {
+	vm, err := bpf.NewVM(arpReplyFilter)
+	require.NoError(t, err)
+
+	frame := buildARPRequest(
+		net.HardwareAddr{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
+		net.IP{10, 0, 0, 1},
+		net.IP{10, 0, 0, 2},
+	)
+	verdict, err := vm.Run(frame)
+	require.NoError(t, err)
+	assert.Zero(t, verdict, "ARP request should be dropped")
+}
+
+func TestARPReplyFilter_DropsNonARP(t *testing.T) {
+	vm, err := bpf.NewVM(arpReplyFilter)
+	require.NoError(t, err)
+
+	// IPv4 frame (EtherType 0x0800)
+	frame := make([]byte, 42)
+	binary.BigEndian.PutUint16(frame[12:14], 0x0800)
+	verdict, err := vm.Run(frame)
+	require.NoError(t, err)
+	assert.Zero(t, verdict, "IPv4 frame should be dropped")
 }
 
 func TestBpfPackets_EarlyBreak(t *testing.T) {

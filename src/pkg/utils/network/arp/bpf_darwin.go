@@ -8,6 +8,8 @@ import (
 	"iter"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/net/bpf"
 )
 
 const (
@@ -128,6 +130,46 @@ func setBPFPromisc(fd int, enable bool) error {
 	)
 	if errno != 0 {
 		return fmt.Errorf("BIOCPROMISC failed: %v", errno)
+	}
+	return nil
+}
+
+// arpReplyFilter is a BPF program that only passes ARP reply frames.
+// This avoids copying all network traffic to userspace on busy interfaces.
+//
+// Offsets refer to the Ethernet frame layout (see buildARPRequest in arp.go):
+//
+//	[12:14] EtherType — 0x0806 for ARP
+//	[20:22] ARP opcode — 1 = request, 2 = reply
+var arpReplyFilter = []bpf.Instruction{
+	bpf.LoadAbsolute{Off: 12, Size: 2},                         // load EtherType
+	bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0806, SkipFalse: 3}, // if ARP continue, else drop
+	bpf.LoadAbsolute{Off: 20, Size: 2},                         // load ARP opcode
+	bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x0002, SkipFalse: 1}, // if reply continue, else drop
+	bpf.RetConstant{Val: 0xFFFFFFFF},                           // accept: return full packet
+	bpf.RetConstant{Val: 0},                                    // drop: discard packet
+}
+
+// setBPFFilterARPReply installs the ARP reply filter on the BPF device.
+func setBPFFilterARPReply(fd int) error {
+	raw, err := bpf.Assemble(arpReplyFilter)
+	if err != nil {
+		return fmt.Errorf("failed to assemble BPF filter: %w", err)
+	}
+
+	// bpf.RawInstruction and syscall.BpfInsn have identical memory layouts
+	prog := syscall.BpfProgram{
+		Len:   uint32(len(raw)),
+		Insns: (*syscall.BpfInsn)(unsafe.Pointer(&raw[0])),
+	}
+	_, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		uintptr(fd),
+		syscall.BIOCSETF,
+		uintptr(unsafe.Pointer(&prog)),
+	)
+	if errno != 0 {
+		return fmt.Errorf("BIOCSETF failed: %v", errno)
 	}
 	return nil
 }
