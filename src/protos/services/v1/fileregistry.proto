@@ -34,10 +34,10 @@ message ListImagesRequest {
 }
 
 message VMImage {
-	string image_id = 1;
-	string hash = 2;
-	int64 size = 3;
-	string uploaded_at = 4;
+    string image_id = 1;
+    string hash = 2;
+    int64 size = 3;
+    string uploaded_at = 4;
 }
 
 message ListImagesResponse {

@@ -14,7 +14,7 @@ message CreateRequest {
     string name = 2;
     string image = 3;
     bool start = 4;
-	vm.statemachine.v1.CloudInit cloud_init = 5;
+    vm.statemachine.v1.CloudInit cloud_init = 5;
 }
 
 message StartRequest {
@@ -44,7 +44,7 @@ message Info {
     string state = 3;
     repeated string ipaddresses = 4;
     string hwaddr = 5;
-	vm.statemachine.v1.CloudInit cloud_init = 6;
+    vm.statemachine.v1.CloudInit cloud_init = 6;
 }
 
 message InfoResponse {
