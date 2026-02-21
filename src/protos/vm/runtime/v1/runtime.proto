@@ -10,4 +10,5 @@ message RuntimeInfo {
     string name = 1;
     repeated string ipaddresses = 2;
     optional settings.v1.MemoryStats memory_stats = 3;
+    optional settings.v1.DiskStats disk_stats = 4;
 }
