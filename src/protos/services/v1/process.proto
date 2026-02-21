@@ -5,6 +5,7 @@ package services.v1;
 import "settings/v1/settings.proto";
 import "google/protobuf/empty.proto";
 import "vm/statemachine/v1/statemachine.proto";
+import "vm/runtime/v1/runtime.proto";
 
 option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
 
@@ -60,17 +61,12 @@ message Pid {
     int32 id = 1;
 }
 
-message QemuServiceInfo {
-    string name = 1;
-    repeated string ipaddresses = 2;
-}
-
 message Event {
     string id = 1;
     oneof event_kind {
         Status status = 2;
         Pid pid = 3;
-        QemuServiceInfo info = 4;
+        vm.runtime.v1.RuntimeInfo info = 4;
     }
 }
 
@@ -83,7 +79,7 @@ message QemuServiceInfoRequest {
 }
 
 message QemuServiceInfoResponse {
-    repeated QemuServiceInfo info = 1;
+    repeated vm.runtime.v1.RuntimeInfo info = 1;
 }
 
 service QemuService {

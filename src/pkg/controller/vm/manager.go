@@ -214,7 +214,7 @@ func (m *Manager) Info(id string) ([]*servicesv1.Info, error) {
 			Ids: []string{inst.Id},
 		}); infoErr == nil {
 			for _, data := range resp.Info {
-				info.Ipaddresses = data.Ipaddresses
+				info.RuntimeInfo = data
 			}
 		}
 		res = append(res, info)
@@ -280,7 +280,7 @@ func (m *Manager) eventLoop() {
 						Name:        inst.Id,
 						State:       inst.State.String(),
 						Details:     inst.Hardware,
-						Ipaddresses: data.Info.Ipaddresses,
+						RuntimeInfo: data.Info,
 					}
 					if inst.Cloudinit != nil {
 						info.CloudInit = inst.Cloudinit
