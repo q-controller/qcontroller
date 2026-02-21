@@ -17,6 +17,11 @@ message MemoryStats {
 	uint64 disk_caches = 4;
 }
 
+message DiskStats {
+    uint64 total_bytes = 1;
+    uint64 used_bytes = 2;
+}
+
 message Cache {
     string root = 1;
 }

@@ -453,6 +453,41 @@ func parseGuestStats(data []byte) *settingsv1.MemoryStats {
 	}
 }
 
+func parseBlockInfo(data []byte) *settingsv1.DiskStats {
+	var blocks []qapi.BlockInfo
+	if err := json.Unmarshal(data, &blocks); err != nil {
+		return nil
+	}
+	for _, block := range blocks {
+		if block.Inserted == nil {
+			continue
+		}
+		img := block.Inserted.Image
+		if img.Format == "qcow2" && img.ActualSize != nil {
+			return &settingsv1.DiskStats{
+				TotalBytes: uint64(img.VirtualSize),
+				UsedBytes:  uint64(*img.ActualSize),
+			}
+		}
+	}
+	return nil
+}
+
+func (q *QemuServer) getDiskStatsForInstance(ctx context.Context, id string) *settingsv1.DiskStats {
+	req, reqErr := qapi.PrepareQueryBlockRequest()
+	if reqErr != nil {
+		return nil
+	}
+
+	result, err := q.executeQMPCommand(ctx, id, client.Request(*req))
+	if err != nil {
+		slog.Debug("Failed to get block info", "instance", id, "error", err)
+		return nil
+	}
+
+	return parseBlockInfo(result)
+}
+
 func (q *QemuServer) getMemoryStatsForInstance(ctx context.Context, id string) *settingsv1.MemoryStats {
 	req, reqErr := qapi.PrepareQomGetRequest(qapi.QObjQomGetArg{
 		Path:     fmt.Sprintf("/machine/peripheral/balloon-%s", id),
@@ -477,6 +512,7 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 		info := &runtimev1.RuntimeInfo{
 			Name:        id,
 			MemoryStats: q.getMemoryStatsForInstance(ctx, id),
+			DiskStats:   q.getDiskStatsForInstance(ctx, id),
 		}
 
 		ipaddresses, ipaddressesErr := q.getIpAddressesForInstance(ctx, id)
