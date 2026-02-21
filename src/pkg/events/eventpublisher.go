@@ -26,13 +26,13 @@ func (p *Publisher) VMUpdated(info *v1.Info) error {
 	defer p.mu.Unlock()
 	prev, exists := p.cache[info.Name]
 	if exists && proto.Equal(prev, info) {
-		slog.Debug("Skipping duplicate VM event", "vm", info.Name, "state", info.State, "ips", info.Ipaddresses)
+		slog.Debug("Skipping duplicate VM event", "vm", info.Name, "state", info.State, "ips", info.GetRuntimeInfo().GetIpaddresses())
 		return nil // No change, skip send
 	}
 	if exists {
-		slog.Info("VM info changed", "vm", info.Name, "state", info.State, "ips", info.Ipaddresses, "prev_ips", prev.Ipaddresses)
+		slog.Info("VM info changed", "vm", info.Name, "state", info.State, "ips", info.GetRuntimeInfo().GetIpaddresses(), "prev_ips", prev.GetRuntimeInfo().GetIpaddresses())
 	} else {
-		slog.Info("First VM event", "vm", info.Name, "state", info.State, "ips", info.Ipaddresses)
+		slog.Info("First VM event", "vm", info.Name, "state", info.State, "ips", info.GetRuntimeInfo().GetIpaddresses())
 	}
 	p.cache[info.Name] = proto.Clone(info).(*v1.Info)
 	update := &v1.Update{

@@ -6,6 +6,7 @@ import "settings/v1/settings.proto";
 import "google/protobuf/empty.proto";
 import "google/api/annotations.proto";
 import "vm/statemachine/v1/statemachine.proto";
+import "vm/runtime/v1/runtime.proto";
 
 option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
 
@@ -42,9 +43,9 @@ message Info {
     string name = 1;
     settings.v1.VM details = 2;
     string state = 3;
-    repeated string ipaddresses = 4;
-    string hwaddr = 5;
-    vm.statemachine.v1.CloudInit cloud_init = 6;
+    string hwaddr = 4;
+    vm.statemachine.v1.CloudInit cloud_init = 5;
+    vm.runtime.v1.RuntimeInfo runtime_info = 6;
 }
 
 message InfoResponse {

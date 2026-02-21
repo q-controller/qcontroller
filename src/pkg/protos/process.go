@@ -13,6 +13,7 @@ import (
 	"github.com/q-controller/qcontroller/src/generated/qapi"
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
 	"github.com/q-controller/qcontroller/src/pkg/qemu/process"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
@@ -428,20 +429,64 @@ func (q *QemuServer) getIpAddressesForInstance(ctx context.Context, id string) (
 	return []string{ipaddr.String()}, nil
 }
 
+func parseGuestStats(data []byte) *settingsv1.MemoryStats {
+	var wrapper struct {
+		Stats struct {
+			TotalMemory     uint64 `json:"stat-total-memory"`
+			AvailableMemory uint64 `json:"stat-available-memory"`
+			FreeMemory      uint64 `json:"stat-free-memory"`
+			DiskCaches      uint64 `json:"stat-disk-caches"`
+		} `json:"stats"`
+		LastUpdate uint64 `json:"last-update"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err != nil {
+		return nil
+	}
+	if wrapper.LastUpdate == 0 {
+		return nil
+	}
+	return &settingsv1.MemoryStats{
+		TotalMemory:     wrapper.Stats.TotalMemory,
+		AvailableMemory: wrapper.Stats.AvailableMemory,
+		FreeMemory:      wrapper.Stats.FreeMemory,
+		DiskCaches:      wrapper.Stats.DiskCaches,
+	}
+}
+
+func (q *QemuServer) getMemoryStatsForInstance(ctx context.Context, id string) *settingsv1.MemoryStats {
+	req, reqErr := qapi.PrepareQomGetRequest(qapi.QObjQomGetArg{
+		Path:     fmt.Sprintf("/machine/peripheral/balloon-%s", id),
+		Property: "guest-stats",
+	})
+	if reqErr != nil {
+		return nil
+	}
+
+	result, err := q.executeQMPCommand(ctx, id, client.Request(*req))
+	if err != nil {
+		slog.Debug("Failed to get balloon guest-stats", "instance", id, "error", err)
+		return nil
+	}
+
+	return parseGuestStats(result)
+}
+
 func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceInfoRequest) (*servicesv1.QemuServiceInfoResponse, error) {
-	res := []*servicesv1.QemuServiceInfo{}
+	res := []*runtimev1.RuntimeInfo{}
 	for _, id := range request.Ids {
+		info := &runtimev1.RuntimeInfo{
+			Name:        id,
+			MemoryStats: q.getMemoryStatsForInstance(ctx, id),
+		}
+
 		ipaddresses, ipaddressesErr := q.getIpAddressesForInstance(ctx, id)
 		if ipaddressesErr != nil {
 			slog.Debug("Failed to get IP addresses", "instance", id, "error", ipaddressesErr)
-			continue
+		} else {
+			info.Ipaddresses = ipaddresses
 		}
-		if len(ipaddresses) > 0 {
-			res = append(res, &servicesv1.QemuServiceInfo{
-				Name:        id,
-				Ipaddresses: ipaddresses,
-			})
-		}
+
+		res = append(res, info)
 	}
 
 	return &servicesv1.QemuServiceInfoResponse{

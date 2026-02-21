@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package vm.runtime.v1;
+
+import "settings/v1/settings.proto";
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1;v1";
+
+message RuntimeInfo {
+    string name = 1;
+    repeated string ipaddresses = 2;
+    optional settings.v1.MemoryStats memory_stats = 3;
+}

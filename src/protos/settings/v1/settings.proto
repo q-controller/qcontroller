@@ -10,6 +10,13 @@ message VM {
     uint32 disk = 3;
 }
 
+message MemoryStats {
+	uint64 total_memory = 1;
+	uint64 available_memory = 2;
+	uint64 free_memory = 3;
+	uint64 disk_caches = 4;
+}
+
 message Cache {
     string root = 1;
 }
