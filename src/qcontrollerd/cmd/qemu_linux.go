@@ -137,7 +137,7 @@ var qemuCmd = &cobra.Command{
 			go func() {
 				for iface := range subscription.InterfaceCh {
 					slog.Info("Default interface changed", "interface", iface)
-					if err := netw.Connect(iface); err != nil {
+					if err := netw.Connect(iface, true); err != nil {
 						slog.Error("Failed to connect network to interface", "interface", iface, "error", err)
 					}
 				}
