@@ -8,13 +8,15 @@ export LOG_LEVEL=info
 
 INTERFACE_NAME=br0
 HOST_IP=192.168.71.1/24
-BRIDGE_IP=192.168.71.3/24
+BRIDGE_IP=""  # Will be derived from HOST_IP if not set
 START=192.168.71.4/24
 END=192.168.71.254/24
 MACOS_MODE=MODE_SHARED
 CONTROLLER_PORT=8009
 QEMU_PORT=8008
 GATEWAY_PORT=8080
+FILEREGISTRY_PORT=8010
+REGISTRY_ADDRESS=""
 QCONTROLLERD=""
 RUNDIR=""
 pids=()
@@ -27,7 +29,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "${BASH_SOURCE[0]}") [-h] --rundir PATH --bin PATH [--interface NAME] [--cidr VALUE] [--start IP] [--end IP]
 
-Starts qcontrollerd
+Starts all qcontrollerd services (fileregistry, qemu, gateway, controller)
 
 Available options:
 
@@ -69,7 +71,7 @@ parse_params() {
                 ;;
             --cidr)
                 if [[ "$OS_TYPE" == "Linux" ]]; then
-                    GATEWAY="${2-}"
+                    HOST_IP="${2-}"
                 fi
                 shift
                 ;;
@@ -104,6 +106,25 @@ parse_params() {
     [[ -z "${RUNDIR-}" ]] && die "Missing required parameter: rundir"
     [[ -z "${QCONTROLLERD-}" ]] && die "Missing required parameter: bin"
 
+    # Calculate registry address from local settings
+    if [[ "$OS_TYPE" == "Linux" ]]; then
+        HOST_IP_ADDR=$(echo "${HOST_IP}" | cut -d'/' -f1)
+        REGISTRY_ADDRESS="${HOST_IP_ADDR}:${FILEREGISTRY_PORT}"
+    else
+        REGISTRY_ADDRESS="localhost:${FILEREGISTRY_PORT}"
+    fi
+
+    # Derive BRIDGE_IP from HOST_IP if not set (Linux only)
+    if [[ "$OS_TYPE" == "Linux" ]] && [[ -z "${BRIDGE_IP}" ]]; then
+        # Extract IP and CIDR from HOST_IP (e.g., 192.168.71.1/24)
+        IFS='/' read -r HOST_IP_ADDR HOST_CIDR <<< "${HOST_IP}"
+        IFS='.' read -r h1 h2 h3 h4 <<< "${HOST_IP_ADDR}"
+
+        # Bridge IP = Host IP + 2 (e.g., 192.168.71.1 -> 192.168.71.3)
+        BRIDGE_LAST_OCTET=$((h4 + 2))
+        BRIDGE_IP="${h1}.${h2}.${h3}.${BRIDGE_LAST_OCTET}/${HOST_CIDR}"
+    fi
+
     return 0
 }
 
@@ -121,6 +142,8 @@ if [[ "$OS_TYPE" == "Linux" ]]; then
 cat >${CONFIGDIR}/qemu-config.json <<EOF
 {
     "port": "${QEMU_PORT}",
+    "root": "${ROOTDIR}/qemu",
+    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
     "linuxSettings": {
         "network": {
             "name": "${INTERFACE_NAME}",
@@ -145,6 +168,8 @@ elif [[ "${MACOS_MODE}" == "MODE_BRIDGED" ]]; then
 cat >${CONFIGDIR}/qemu-config.json <<EOF
 {
     "port": ${QEMU_PORT},
+    "root": "${ROOTDIR}/qemu",
+    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
     "macosSettings": {
         "mode": "${MACOS_MODE}",
         "bridged": {
@@ -172,6 +197,8 @@ SUBNET="${NETWORK_IP}/${CIDR_BITS}"
 cat >${CONFIGDIR}/qemu-config.json <<EOF
 {
     "port": ${QEMU_PORT},
+    "root": "${ROOTDIR}/qemu",
+    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
     "macosSettings": {
         "mode": "${MACOS_MODE}",
         "shared": {
@@ -192,11 +219,20 @@ fi
 cat >${CONFIGDIR}/controller-config.json <<EOF
 {
     "port": ${CONTROLLER_PORT},
+    "root": "${ROOTDIR}",
+    "remotes": [],
+    "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"}
+}
+EOF
+
+cat >${CONFIGDIR}/fileregistry-config.json <<EOF
+{
+    "port": ${FILEREGISTRY_PORT},
     "cache": {
         "root": "cache"
     },
     "root": "${ROOTDIR}",
-    "qemuEndpoint": "${QEMU_HOST}:${QEMU_PORT}"
+    "eventsEndpoint": "localhost:${CONTROLLER_PORT}"
 }
 EOF
 
@@ -204,9 +240,18 @@ cat >${CONFIGDIR}/gateway-config.json <<EOF
 {
     "port": ${GATEWAY_PORT},
     "controllerEndpoint": "localhost:${CONTROLLER_PORT}",
+    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
     "exposeSwaggerUi": true
 }
 EOF
+
+touch ${LOGDIR}/fileregistry.out
+touch ${LOGDIR}/fileregistry.err
+${QCONTROLLERD} fileregistry -c ${CONFIGDIR}/fileregistry-config.json >${LOGDIR}/fileregistry.out 2>${LOGDIR}/fileregistry.err &
+pids+=($!)
+
+# Wait until fileregistry is ready
+sleep 1
 
 touch ${LOGDIR}/qemu.out
 touch ${LOGDIR}/qemu.err
