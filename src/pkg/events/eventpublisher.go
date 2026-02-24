@@ -65,6 +65,24 @@ func (p *Publisher) VMRemoved(id string) error {
 	return p.publish(&v1.PublishRequest{Update: update})
 }
 
+// GetAll returns a snapshot of all cached VM infos.
+func (p *Publisher) GetAll() []*v1.Info {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]*v1.Info, 0, len(p.cache))
+	for _, info := range p.cache {
+		out = append(out, info)
+	}
+	return out
+}
+
+// Get returns the cached info for a specific VM, or nil if not found.
+func (p *Publisher) Get(name string) *v1.Info {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cache[name]
+}
+
 func (p *Publisher) PublishImageUpdate(image *v1.VMImage, eventType v1.ImageEvent_EventType) error {
 	update := &v1.Update{
 		Timestamp: time.Now().Unix(),

@@ -36,32 +36,6 @@ message QemuServiceStopRequest {
     bool force = 2;
 }
 
-message QemuServiceStatusRequest {
-    string id = 1;
-}
-
-enum Level {
-    LEVEL_UNSPECIFIED = 0;
-    LEVEL_OUT = 1;
-    LEVEL_ERR = 2;
-}
-
-message Status {
-    bool running = 1;
-}
-
-message Event {
-    string id = 1;
-    oneof event_kind {
-        Status status = 2;
-        vm.runtime.v1.RuntimeInfo info = 3;
-    }
-}
-
-message QemuServiceStatusResponse {
-    Event event = 1;
-}
-
 message QemuServiceInfoRequest {
     repeated string ids = 1;
 }
@@ -85,7 +59,6 @@ service QemuService {
     rpc Start(QemuServiceStartRequest) returns (QemuServiceStartResponse) {}
     rpc Stop(QemuServiceStopRequest) returns (google.protobuf.Empty) {}
     rpc Info(QemuServiceInfoRequest) returns (QemuServiceInfoResponse) {}
-    rpc Status(QemuServiceStatusRequest) returns (stream QemuServiceStatusResponse) {}
     rpc List(QemuServiceListRequest) returns (QemuServiceListResponse) {}
     rpc Remove(QemuServiceRemoveRequest) returns (google.protobuf.Empty) {}
 }

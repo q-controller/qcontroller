@@ -12,6 +12,7 @@ enum State {
     STATE_RUNNING = 2;
     STATE_REQUESTINGSTOP = 3;
     STATE_STOPPED = 4;
+    STATE_UNKNOWN = 5;
 }
 
 enum Event {
@@ -34,4 +35,5 @@ message Instance {
     string image_id = 4;
     State state = 5;
     CloudInit cloudinit = 6;
+    string node = 7;
 }
