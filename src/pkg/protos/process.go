@@ -22,7 +22,6 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/utils/network"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
 	"github.com/q-controller/qemu-client/pkg/qemu"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -277,95 +276,6 @@ func (q *QemuServer) Stop(ctx context.Context,
 	}
 
 	return &emptypb.Empty{}, nil
-}
-
-func (q *QemuServer) Status(req *servicesv1.QemuServiceStatusRequest,
-	stream grpc.ServerStreamingServer[servicesv1.QemuServiceStatusResponse]) error {
-	ctx := stream.Context()
-	// Create a timer to periodically send VM info
-	timer := time.NewTicker(1 * time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-timer.C:
-			running := false
-			if statReq, reqErr := qapi.PrepareQueryStatusRequest(); reqErr != nil {
-				slog.Error("Failed to prepare QMP status request", "error", reqErr)
-			} else {
-				ch := make(chan CommandResult)
-				q.commandCh <- Command{
-					Id:          req.Id,
-					RequestKind: RequestKindQMP,
-					Request:     client.Request(*statReq),
-					Result:      ch,
-				}
-				res := <-ch
-				if res.Error != nil {
-					slog.Debug("Failed to execute QMP status command", "error", res.Error)
-				} else if res.Result != nil {
-					if r, ok := res.Result.Get(ctx, 2*time.Second); ok && r.Return != nil {
-						var status qapi.StatusInfo
-						if unmarshalErr := json.Unmarshal(r.Return, &status); unmarshalErr == nil {
-							slog.Debug("QMP status", "instance", req.Id, "status", status.Status)
-							if status.Status == "running" {
-								running = true
-							}
-						} else {
-							slog.Error("Failed to unmarshal QMP status response", "error", unmarshalErr)
-						}
-					}
-				}
-			}
-			if !running {
-				if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
-					Event: &servicesv1.Event{
-						Id: req.Id,
-						EventKind: &servicesv1.Event_Status{
-							Status: &servicesv1.Status{
-								Running: false,
-							},
-						},
-					},
-				}); sendErr != nil {
-					return sendErr
-				}
-
-				return nil
-			}
-			if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
-				Event: &servicesv1.Event{
-					Id: req.Id,
-					EventKind: &servicesv1.Event_Status{
-						Status: &servicesv1.Status{
-							Running: true,
-						},
-					},
-				},
-			}); sendErr != nil {
-				return sendErr
-			}
-			if resp, respErr := q.Info(ctx, &servicesv1.QemuServiceInfoRequest{
-				Ids: []string{req.Id},
-			}); respErr != nil || len(resp.Info) == 0 {
-				slog.Debug("Failed to get VM info", "error", respErr)
-			} else {
-				info := resp.Info[0]
-				if sendErr := stream.Send(&servicesv1.QemuServiceStatusResponse{
-					Event: &servicesv1.Event{
-						Id: req.Id,
-						EventKind: &servicesv1.Event_Info{
-							Info: info,
-						},
-					},
-				}); sendErr != nil {
-					slog.Warn("Failed to stream data", "error", sendErr)
-					return sendErr
-				}
-			}
-		}
-	}
 }
 
 // executeQMPCommand sends a QMP command and waits for the result.

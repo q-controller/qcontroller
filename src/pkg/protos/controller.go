@@ -24,7 +24,7 @@ type Server struct {
 }
 
 func (s *Server) Start(ctx context.Context, request *servicesv1.StartRequest) (*emptypb.Empty, error) {
-	if startErr := s.manager.Start(request.Name); startErr != nil {
+	if startErr := s.manager.Start(ctx, request.Name); startErr != nil {
 		slog.Error("failed to start an instance", "error", startErr)
 		return nil, status.Errorf(codes.Unknown, "failed to start a VM instance")
 	}
@@ -33,14 +33,15 @@ func (s *Server) Start(ctx context.Context, request *servicesv1.StartRequest) (*
 }
 
 func (s *Server) Create(ctx context.Context, request *servicesv1.CreateRequest) (*emptypb.Empty, error) {
-	if createErr := s.manager.Create(request.Name, request.Image,
+	qualifiedName, createErr := s.manager.Create(request.Name, request.Image,
 		request.Vm.Cpus, request.Vm.Memory,
-		request.Vm.Disk, request.CloudInit); createErr != nil {
+		request.Vm.Disk, request.CloudInit, request.Node)
+	if createErr != nil {
 		return nil, status.Errorf(codes.Internal, "method Launch failed: %v", createErr)
 	}
 
 	if request.Start {
-		if startErr := s.manager.Start(request.Name); startErr != nil {
+		if startErr := s.manager.Start(ctx, qualifiedName); startErr != nil {
 			return nil, status.Errorf(codes.Unknown, "failed to start a VM instance")
 		}
 	}
@@ -67,13 +68,19 @@ func (s *Server) Remove(ctx context.Context, req *servicesv1.RemoveRequest) (*em
 }
 
 func (s *Server) Info(ctx context.Context, request *servicesv1.InfoRequest) (*servicesv1.InfoResponse, error) {
-	info, infoErr := s.manager.Info(request.Name)
+	info, infoErr := s.manager.Info(ctx, request.Name)
 	if infoErr != nil {
 		return nil, status.Errorf(codes.Internal, "failed to retrieve info")
 	}
 
 	return &servicesv1.InfoResponse{
 		Info: info,
+	}, nil
+}
+
+func (s *Server) ListNodes(ctx context.Context, _ *emptypb.Empty) (*servicesv1.ListNodesResponse, error) {
+	return &servicesv1.ListNodesResponse{
+		Nodes: s.manager.ListNodes(),
 	}, nil
 }
 
@@ -87,7 +94,7 @@ func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events
 		return nil, stateErr
 	}
 
-	manager := vm.CreateManager(settings.QemuEndpoint, state, eventPublisher)
+	manager := vm.CreateManager(settings.Local, settings.Remotes, state, eventPublisher)
 	if manager == nil {
 		return nil, fmt.Errorf("failed to create a manager")
 	}

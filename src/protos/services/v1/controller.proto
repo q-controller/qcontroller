@@ -16,6 +16,7 @@ message CreateRequest {
     string image = 3;
     bool start = 4;
     vm.statemachine.v1.CloudInit cloud_init = 5;
+    string node = 6;  // empty = scheduler picks
 }
 
 message StartRequest {
@@ -46,10 +47,16 @@ message Info {
     string hwaddr = 4;
     vm.statemachine.v1.CloudInit cloud_init = 5;
     vm.runtime.v1.RuntimeInfo runtime_info = 6;
+    string node = 7;
+    string image_id = 8;
 }
 
 message InfoResponse {
     repeated Info info = 1;
+}
+
+message ListNodesResponse {
+    repeated settings.v1.Node nodes = 1;
 }
 
 service ControllerService {
@@ -83,6 +90,12 @@ service ControllerService {
     rpc Info(InfoRequest) returns (InfoResponse) {
         option (google.api.http) = {
             get: "/v1/instances/{name}"
+        };
+    }
+
+    rpc ListNodes(google.protobuf.Empty) returns (ListNodesResponse) {
+        option (google.api.http) = {
+            get: "/v1/nodes"
         };
     }
 }

@@ -149,7 +149,7 @@ var gwCmd = &cobra.Command{
 			}
 		}
 
-		fileRegistryClient, clientErr := createFileRegistryClient(config.ControllerEndpoint)
+		fileRegistryClient, clientErr := createFileRegistryClient(config.FileRegistryEndpoint)
 		if clientErr != nil {
 			return fmt.Errorf("failed to create file registry client: %w", clientErr)
 		}
