@@ -28,15 +28,14 @@ func validInstance(id string) *vmv1.Instance {
 	mem := 1024
 	disk := 10
 	return &vmv1.Instance{
-		Id:   id,
-		Path: "/tmp/vm",
+		Id:      id,
+		ImageId: "test-image",
 		Hardware: &settingsv1.VM{
 			Memory: uint32(mem),
 			Disk:   uint32(disk),
 			Cpus:   2,
 		},
 		Hwaddr: &hw,
-		Pid:    nil,
 	}
 }
 
@@ -62,12 +61,12 @@ func TestUpdate_MissingRequiredFields(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing Id")
 	}
-	// Missing Path
+	// Missing ImageId
 	inst = validInstance("id2")
-	inst.Path = ""
+	inst.ImageId = ""
 	_, err = db.Update(inst)
 	if err == nil {
-		t.Error("expected error for missing Path")
+		t.Error("expected error for missing ImageId")
 	}
 	// Missing Hardware
 	inst = validInstance("id3")
@@ -133,64 +132,37 @@ func TestUpdate_HwaddrUniqueness(t *testing.T) {
 	}
 }
 
-func TestUpdate_PidUniqueness(t *testing.T) {
-	db, cleanup := tempDB(t)
-	defer cleanup()
-	pid := int32(1234)
-	inst1 := validInstance("id11")
-	inst1.Pid = &pid
-	inst2 := validInstance("id12")
-	inst2.Pid = &pid // same pid
-	inst2.Hwaddr = new(string)
-	*inst2.Hwaddr = "ff:ee:dd:cc:bb:aa"
-	if _, err := db.Update(inst1); err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	_, err := db.Update(inst2)
-	if err == nil {
-		t.Error("expected error for duplicate pid")
-	}
-}
-
 func TestUpdate_UpdateExistingInstance(t *testing.T) {
 	db, cleanup := tempDB(t)
 	defer cleanup()
 	inst := validInstance("id13")
-	pid := int32(4321)
-	inst.Pid = &pid
 	if _, err := db.Update(inst); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
-	// Change Hwaddr and Pid
+	// Change Hwaddr
 	newHw := "11:22:33:44:55:66"
-	newPid := int32(5678)
 	inst.Hwaddr = &newHw
-	inst.Pid = &newPid
 	if _, err := db.Update(inst); err != nil {
-		t.Fatalf("Update (change hwaddr/pid) failed: %v", err)
+		t.Fatalf("Update (change hwaddr) failed: %v", err)
 	}
-	// Old hwaddr and pid should be free for reuse
+	// Old hwaddr should be free for reuse
 	inst2 := validInstance("id14")
 	inst2.Hwaddr = new(string)
 	*inst2.Hwaddr = "aa:bb:cc:dd:ee:ff"
-	inst2.Pid = new(int32)
-	*inst2.Pid = 4321
 	if _, err := db.Update(inst2); err != nil {
-		t.Fatalf("Update with reused old hwaddr/pid failed: %v", err)
+		t.Fatalf("Update with reused old hwaddr failed: %v", err)
 	}
 }
 
-func TestUpdate_ReuseHwaddrAndPidForSameInstance(t *testing.T) {
+func TestUpdate_ReuseHwaddrForSameInstance(t *testing.T) {
 	db, cleanup := tempDB(t)
 	defer cleanup()
 	inst := validInstance("id15")
-	pid := int32(9999)
-	inst.Pid = &pid
 	if _, err := db.Update(inst); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
-	// Update with same hwaddr and pid (should succeed)
+	// Update with same hwaddr (should succeed)
 	if _, err := db.Update(inst); err != nil {
-		t.Fatalf("Update with same hwaddr/pid failed: %v", err)
+		t.Fatalf("Update with same hwaddr failed: %v", err)
 	}
 }

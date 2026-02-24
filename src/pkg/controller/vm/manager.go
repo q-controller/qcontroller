@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sync"
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
@@ -15,69 +13,43 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
 	"github.com/q-controller/qcontroller/src/pkg/events"
-	"github.com/q-controller/qcontroller/src/pkg/images"
-	localUtils "github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/q-controller/qemu-client/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-const (
-	cINSTANCES = "instances"
-	cERRLOG    = "log.err"
-	cOUTLOG    = "log.out"
-)
-
 // Manager holds a collection of VM instances.
 type Manager struct {
-	rootDir      string
-	instancesDir string
-	state        controller.State
-	mutex        sync.RWMutex
-
+	state    controller.State
+	mutex    sync.RWMutex
 	qemuConn *grpc.ClientConn
 	qemuCh   chan *servicesv1.Event
 
-	imageClient     images.ImageClient
 	eventsPublisher *events.Publisher
 }
 
-// NewManager creates a new VM provisioner.
-func newManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient, eventPublisher *events.Publisher) (*Manager, error) {
-	if _, statErr := os.Stat(rootDir); statErr != nil {
-		return nil, statErr
-	}
-
-	instancesDir := filepath.Join(rootDir, cINSTANCES)
-	if err := os.MkdirAll(instancesDir, 0777); err != nil {
-		return nil, err
-	}
-
+// newManager creates a new VM provisioner.
+func newManager(qemuEndpoint string, state controller.State, eventPublisher *events.Publisher) (*Manager, error) {
 	vms, vmsErr := state.List()
 	if vmsErr != nil {
 		return nil, vmsErr
 	}
 
-	conn, err := grpc.NewClient(qemuEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("did not connect: %w", err)
+	conn, connErr := grpc.NewClient(qemuEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if connErr != nil {
+		return nil, fmt.Errorf("failed to connect to QEMU service at %s: %w", qemuEndpoint, connErr)
 	}
 
 	manager := Manager{
 		state:           state,
-		rootDir:         rootDir,
-		instancesDir:    instancesDir,
-		qemuCh:          make(chan *servicesv1.Event),
 		qemuConn:        conn,
-		imageClient:     imageClient,
+		qemuCh:          make(chan *servicesv1.Event),
 		eventsPublisher: eventPublisher,
 	}
 
-	// This can occur only during startup. Ensure
-	// the state is adjusted to allow VM restart.
+	// Reset all VMs to STOPPED on startup — QEMU service handles reattach.
 	for _, inst := range vms {
 		inst.State = vmv1.State_STATE_STOPPED
-
 		if _, updateErr := state.Update(inst); updateErr != nil {
 			return nil, updateErr
 		}
@@ -85,10 +57,18 @@ func newManager(rootDir string, qemuEndpoint string, state controller.State, ima
 
 	manager.eventLoop()
 
-	for _, inst := range vms {
-		if inst.Pid != nil {
-			if err := manager.Start(inst.Id); err != nil {
-				slog.Warn("Failed to reattach to qemu instance", "error", err)
+	// Reconcile with QEMU service: discover running instances and start status streams.
+	client := servicesv1.NewQemuServiceClient(conn)
+	listResp, listErr := client.List(context.Background(), &servicesv1.QemuServiceListRequest{})
+	if listErr != nil {
+		slog.Warn("Failed to query QEMU service for running instances", "error", listErr)
+	} else {
+		for _, id := range listResp.Ids {
+			if _, getErr := state.Get(id); getErr != nil {
+				continue
+			}
+			if streamErr := manager.startStatusStream(id); streamErr != nil {
+				slog.Warn("Failed to start status stream for instance", "id", id, "error", streamErr)
 			}
 		}
 	}
@@ -96,7 +76,7 @@ func newManager(rootDir string, qemuEndpoint string, state controller.State, ima
 	return &manager, nil
 }
 
-// NewVMInstance creates a new VM instance with a state machine.
+// Create creates a new VM instance.
 func (m *Manager) Create(id, imageId string,
 	cpus uint32, memory, disk uint32, cloudInit *vmv1.CloudInit) error {
 	m.mutex.Lock()
@@ -106,22 +86,18 @@ func (m *Manager) Create(id, imageId string,
 		return fmt.Errorf("instance %s already exists", id)
 	}
 
-	imageUrl := filepath.Join(m.instanceDir(id), "image")
-	if downloadErr := m.imageClient.Download(context.Background(), imageId, imageUrl); downloadErr != nil {
-		return downloadErr
-	}
-
 	hwaddr, hwaddrErr := utils.GenerateRandomMAC()
 	if hwaddrErr != nil {
 		return hwaddrErr
 	}
+
 	_, instanceErr := m.state.Update(&vmv1.Instance{
 		Hardware: &settingsv1.VM{
 			Cpus:   cpus,
 			Memory: memory,
 			Disk:   disk,
 		},
-		Path:      imageUrl,
+		ImageId:   imageId,
 		Id:        id,
 		Hwaddr:    &hwaddr,
 		State:     vmv1.State_STATE_STOPPED,
@@ -137,6 +113,10 @@ func (m *Manager) Create(id, imageId string,
 func (m *Manager) Stop(ctx context.Context, id string, force bool) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
+	if _, err := m.state.Get(id); err != nil {
+		return fmt.Errorf("instance %s not found: %w", id, err)
+	}
 
 	if _, stopErr := servicesv1.NewQemuServiceClient(m.qemuConn).Stop(context.Background(), &servicesv1.QemuServiceStopRequest{
 		Id:    id,
@@ -163,7 +143,14 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 		slog.Warn("Failed to publish VM removal event", "id", id, "error", eventErr)
 	}
 
-	return os.RemoveAll(filepath.Join(m.instancesDir, id))
+	// Clean up instance directory on QEMU side
+	if _, removeErr := servicesv1.NewQemuServiceClient(m.qemuConn).Remove(context.Background(), &servicesv1.QemuServiceRemoveRequest{
+		Id: id,
+	}); removeErr != nil {
+		slog.Warn("Failed to remove instance from QEMU", "id", id, "error", removeErr)
+	}
+
+	return nil
 }
 
 func (m *Manager) Start(id string) error {
@@ -224,13 +211,12 @@ func (m *Manager) Info(id string) ([]*servicesv1.Info, error) {
 }
 
 // singleton and once implement a thread-safe singleton pattern for Manager.
-// This ensures only one instance of Manager is created and shared across the application.
 var singleton *Manager
 var once sync.Once
 
-func CreateManager(rootDir string, qemuEndpoint string, state controller.State, imageClient images.ImageClient, eventPublisher *events.Publisher) *Manager {
+func CreateManager(qemuEndpoint string, state controller.State, eventPublisher *events.Publisher) *Manager {
 	once.Do(func() {
-		mgr, mgrErr := newManager(rootDir, qemuEndpoint, state, imageClient, eventPublisher)
+		mgr, mgrErr := newManager(qemuEndpoint, state, eventPublisher)
 		if mgrErr != nil {
 			slog.Error("failed to create VM manager", "error", mgrErr)
 		}
@@ -264,17 +250,6 @@ func (m *Manager) eventLoop() {
 							slog.Warn("Failed to publish VM update event", "id", inst.Id, "error", eventErr)
 						}
 					}
-					if !data.Status.Running {
-						inst.Pid = nil
-						if _, instanceErr := m.state.Update(inst); instanceErr != nil {
-							slog.Error("Failed to update state", "instance", event.Id, "error", instanceErr)
-						}
-					}
-				case *servicesv1.Event_Pid:
-					inst.Pid = &data.Pid.Id
-					if _, instanceErr := m.state.Update(inst); instanceErr != nil {
-						slog.Error("Failed to update state", "instance", event.Id, "error", instanceErr)
-					}
 				case *servicesv1.Event_Info:
 					info := &servicesv1.Info{
 						Name:        inst.Id,
@@ -298,19 +273,48 @@ func (m *Manager) eventLoop() {
 	}()
 }
 
+func (m *Manager) startStatusStream(id string) error {
+	client := servicesv1.NewQemuServiceClient(m.qemuConn)
+	statusResp, statusErr := client.Status(context.Background(), &servicesv1.QemuServiceStatusRequest{
+		Id: id,
+	})
+	if statusErr != nil {
+		return statusErr
+	}
+
+	go func() {
+		slog.Info("Starting status loop goroutine", "instance", id)
+
+	STATUS_LOOP:
+		for {
+			resp, err := statusResp.Recv()
+			if err == nil {
+				slog.Debug("Received status event", "instance", id, "event_type", fmt.Sprintf("%T", resp.Event.EventKind))
+				m.qemuCh <- resp.Event
+				switch data := resp.Event.EventKind.(type) {
+				case *servicesv1.Event_Status:
+					if !data.Status.Running {
+						break STATUS_LOOP
+					}
+				}
+			} else {
+				m.qemuCh <- &servicesv1.Event{
+					Id: id,
+					EventKind: &servicesv1.Event_Status{
+						Status: &servicesv1.Status{
+							Running: false,
+						},
+					},
+				}
+				break STATUS_LOOP
+			}
+		}
+	}()
+
+	return nil
+}
+
 func (m *Manager) startImpl(instance *vmv1.Instance) error {
-	instanceDir := m.instanceDir(instance.Id)
-	if err := os.MkdirAll(instanceDir, 0777); err != nil {
-		return err
-	}
-	ErrFilePath := filepath.Join(instanceDir, cERRLOG)
-	if err := localUtils.TouchFile(ErrFilePath); err != nil {
-		return fmt.Errorf("failed to touch file: %v", err)
-	}
-	OutFilePath := filepath.Join(instanceDir, cOUTLOG)
-	if err := localUtils.TouchFile(OutFilePath); err != nil {
-		return fmt.Errorf("failed to touch file: %v", err)
-	}
 	cloudInit := instance.Cloudinit
 	if cloudInit == nil || cloudInit.NetworkConfig == "" {
 		if instance.Hwaddr == nil {
@@ -324,10 +328,12 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 			*instance.Hwaddr,
 		)
 	}
-	startResp, startErr := servicesv1.NewQemuServiceClient(m.qemuConn).Start(context.Background(), &servicesv1.QemuServiceStartRequest{
+
+	client := servicesv1.NewQemuServiceClient(m.qemuConn)
+	if _, startErr := client.Start(context.Background(), &servicesv1.QemuServiceStartRequest{
 		Config: &servicesv1.QemuConfig{
-			Id:    instance.Id,
-			Image: instance.Path,
+			Id:      instance.Id,
+			ImageId: instance.ImageId,
 			Hardware: &settingsv1.VM{
 				Cpus:   instance.Hardware.Cpus,
 				Memory: instance.Hardware.Memory,
@@ -336,69 +342,11 @@ func (m *Manager) startImpl(instance *vmv1.Instance) error {
 			Network: &servicesv1.NetworkConfig{
 				Mac: *instance.Hwaddr,
 			},
-			ErrFilePath: ErrFilePath,
-			OutFilePath: OutFilePath,
-			CloudInit:   cloudInit,
+			CloudInit: cloudInit,
 		},
-		Pid: instance.Pid,
-	})
-	if startErr != nil {
-		if instance.Pid != nil {
-			instance.Pid = nil
-			if _, instanceErr := m.state.Update(instance); instanceErr != nil {
-				slog.Error("Failed to update state", "instance", instance.Id, "error", instanceErr)
-			}
-		}
+	}); startErr != nil {
 		return startErr
 	}
 
-	statusResp, statusErr := servicesv1.NewQemuServiceClient(m.qemuConn).Status(context.Background(), &servicesv1.QemuServiceStatusRequest{
-		Id: instance.Id,
-	})
-	if statusErr != nil {
-		return statusErr
-	}
-
-	go func(pid int32) {
-		slog.Info("Starting status loop goroutine", "instance", instance.Id, "pid", pid)
-		m.qemuCh <- &servicesv1.Event{
-			Id: instance.Id,
-			EventKind: &servicesv1.Event_Pid{
-				Pid: &servicesv1.Pid{
-					Id: pid,
-				},
-			},
-		}
-
-	STATUS_LOOP:
-		for {
-			resp, err := statusResp.Recv()
-			if err == nil {
-				slog.Debug("Received status event", "instance", instance.Id, "event_type", fmt.Sprintf("%T", resp.Event.EventKind))
-				m.qemuCh <- resp.Event
-				switch data := resp.Event.EventKind.(type) {
-				case *servicesv1.Event_Status:
-					if !data.Status.Running {
-						break STATUS_LOOP
-					}
-				}
-			} else {
-				m.qemuCh <- &servicesv1.Event{
-					Id: instance.Id,
-					EventKind: &servicesv1.Event_Status{
-						Status: &servicesv1.Status{
-							Running: false,
-						},
-					},
-				}
-				break STATUS_LOOP
-			}
-		}
-	}(startResp.Pid)
-
-	return nil
-}
-
-func (m *Manager) instanceDir(id string) string {
-	return filepath.Join(m.instancesDir, id)
+	return m.startStatusStream(instance.Id)
 }

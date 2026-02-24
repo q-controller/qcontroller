@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/q-controller/qapi-client/src/client"
@@ -14,6 +16,7 @@ import (
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
+	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/qemu/process"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
@@ -36,6 +39,8 @@ type QemuServer struct {
 	shutdownCh           chan<- struct{}
 	forceStopCh          chan<- string
 	addressResolver      ip.AddressResolver
+	instancesDir         string
+	imageClient          images.ImageClient
 }
 
 type InstanceEvent struct {
@@ -152,62 +157,76 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 	}
 }
 
+func (q *QemuServer) instanceDir(id string) string {
+	return filepath.Join(q.instancesDir, id)
+}
+
 func (q *QemuServer) Start(ctx context.Context,
 	req *servicesv1.QemuServiceStartRequest) (*servicesv1.QemuServiceStartResponse, error) {
 	id := req.Config.Id
+	dir := q.instanceDir(id)
 
-	var qemuInstance *qemu.Instance
-	if req.Pid != nil {
-		if inst, instErr := qemu.Attach(req.Config.Id, int(*req.Pid)); instErr == nil {
-			qemuInstance = inst
-		} else {
-			return nil, status.Errorf(codes.Internal, "method Start failed [instance: %s, err: %v]", id, instErr)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create instance dir: %v", err)
+	}
+
+	// Download image if not already present
+	imagePath := qemu.ImagePath(dir)
+	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
+		slog.Info("Downloading image", "image_id", req.Config.ImageId, "instance", id)
+		downloadStart := time.Now()
+		if downloadErr := q.imageClient.Download(ctx, req.Config.ImageId, imagePath); downloadErr != nil {
+			slog.Error("Failed to download image", "image_id", req.Config.ImageId, "instance", id, "error", downloadErr)
+			return nil, status.Errorf(codes.Internal, "failed to download image: %v", downloadErr)
+		}
+		if info, statErr := os.Stat(imagePath); statErr == nil {
+			slog.Info("Image downloaded", "image_id", req.Config.ImageId, "instance", id,
+				"size_mb", info.Size()/(1024*1024), "duration", time.Since(downloadStart).Round(time.Second))
+		}
+	} else {
+		slog.Info("Image already present", "image_id", req.Config.ImageId, "instance", id)
+	}
+
+	if q.nm != nil {
+		if removeErr := q.nm.RemoveInterface(id); removeErr != nil {
+			slog.Warn("Failed to remove existing interface", "instance", id, "error", removeErr)
+		}
+		if ifcErr := q.nm.CreateInterface(id); ifcErr != nil {
+			return nil, status.Errorf(codes.Internal, "method Start failed: %v", ifcErr)
 		}
 	}
 
-	if qemuInstance == nil {
-		if q.nm != nil {
-			if ifcErr := q.nm.CreateInterface(id); ifcErr != nil {
-				return nil, status.Errorf(codes.Internal, "method Start failed: %v", ifcErr)
-			}
+	cloudInit := qemu.CloudInitConfig{}
+	if req.Config.CloudInit != nil {
+		cloudInit = qemu.CloudInitConfig{
+			Userdata:      req.Config.CloudInit.Userdata,
+			NetworkConfig: req.Config.CloudInit.NetworkConfig,
 		}
+	}
 
-		cloudInit := qemu.CloudInitConfig{}
-		if req.Config.CloudInit != nil {
-			cloudInit = qemu.CloudInitConfig{
-				Userdata:      req.Config.CloudInit.Userdata,
-				NetworkConfig: req.Config.CloudInit.NetworkConfig,
-			}
-		}
+	platformConfig, platformErr := buildPlatformConfig(q.config)
+	if platformErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to build platform config: %v", platformErr)
+	}
 
-		platformConfig, platformErr := buildPlatformConfig(q.config)
-		if platformErr != nil {
-			return nil, status.Errorf(codes.Internal, "failed to build platform config: %v", platformErr)
-		}
-
-		inst, qemuInstanceErr := qemu.Start(req.Config.Id, req.Config.Image, req.Config.OutFilePath, req.Config.ErrFilePath, qemu.Config{
-			Cpus:      req.Config.Hardware.Cpus,
-			Memory:    req.Config.Hardware.Memory,
-			Disk:      req.Config.Hardware.Disk,
-			HwAddr:    req.Config.Network.Mac,
-			Platform:  platformConfig,
-			CloudInit: cloudInit,
-		})
-
-		if qemuInstanceErr != nil {
-			return nil, status.Errorf(codes.Internal, "method Start failed: %v", qemuInstanceErr)
-		}
-		qemuInstance = inst
+	inst, qemuInstanceErr := qemu.Start(id, dir, qemu.Config{
+		Cpus:      req.Config.Hardware.Cpus,
+		Memory:    req.Config.Hardware.Memory,
+		Disk:      req.Config.Hardware.Disk,
+		HwAddr:    req.Config.Network.Mac,
+		Platform:  platformConfig,
+		CloudInit: cloudInit,
+	})
+	if qemuInstanceErr != nil {
+		return nil, status.Errorf(codes.Internal, "method Start failed: %v", qemuInstanceErr)
 	}
 
 	q.instanceEventChannel <- &InstanceEvent{
-		Instance: qemuInstance,
+		Instance: inst,
 		Id:       id,
 	}
 
-	return &servicesv1.QemuServiceStartResponse{
-		Pid: int32(qemuInstance.Pid),
-	}, nil
+	return &servicesv1.QemuServiceStartResponse{}, nil
 }
 
 func (q *QemuServer) Stop(ctx context.Context,
@@ -530,7 +549,88 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 	}, nil
 }
 
-func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.AddressResolver, config *settingsv1.QemuConfig) (servicesv1.QemuServiceServer, error) {
+func (q *QemuServer) List(ctx context.Context, req *servicesv1.QemuServiceListRequest) (*servicesv1.QemuServiceListResponse, error) {
+	entries, err := os.ReadDir(q.instancesDir)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to read instances dir: %v", err)
+	}
+
+	var ids []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := q.instanceDir(entry.Name())
+		pid, pidErr := qemu.ReadPidfile(dir)
+		if pidErr != nil || !qemu.ProcessAlive(pid) {
+			continue
+		}
+		ids = append(ids, entry.Name())
+	}
+
+	return &servicesv1.QemuServiceListResponse{Ids: ids}, nil
+}
+
+func (q *QemuServer) Remove(ctx context.Context, req *servicesv1.QemuServiceRemoveRequest) (*emptypb.Empty, error) {
+	dir := q.instanceDir(req.Id)
+
+	// Refuse to remove if process is still alive
+	if pid, err := qemu.ReadPidfile(dir); err == nil && qemu.ProcessAlive(pid) {
+		return nil, status.Errorf(codes.FailedPrecondition, "instance %s is still running", req.Id)
+	}
+
+	if err := os.RemoveAll(dir); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to remove instance dir: %v", err)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (q *QemuServer) reattachOnStartup() {
+	entries, err := os.ReadDir(q.instancesDir)
+	if err != nil {
+		slog.Error("Failed to read instances dir for reattach", "error", err)
+		return
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		id := entry.Name()
+		dir := q.instanceDir(id)
+
+		pid, pidErr := qemu.ReadPidfile(dir)
+		if pidErr != nil {
+			slog.Debug("No pidfile for instance, skipping reattach", "id", id)
+			continue
+		}
+
+		if !qemu.ProcessAlive(pid) {
+			slog.Info("Instance process not alive, skipping reattach", "id", id, "pid", pid)
+			continue
+		}
+
+		inst, attachErr := qemu.Attach(id, dir, pid)
+		if attachErr != nil {
+			slog.Error("Failed to reattach to instance", "id", id, "error", attachErr)
+			continue
+		}
+
+		slog.Info("Reattached to running instance", "id", id, "pid", pid)
+		q.instanceEventChannel <- &InstanceEvent{
+			Instance: inst,
+			Id:       id,
+		}
+	}
+}
+
+func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.AddressResolver, config *settingsv1.QemuConfig, imageClient images.ImageClient) (servicesv1.QemuServiceServer, error) {
+	instancesDir := filepath.Join(config.Root, "instances")
+	if err := os.MkdirAll(instancesDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create instances dir: %w", err)
+	}
+
 	instanceCh := make(chan *InstanceEvent)
 	commandCh := make(chan Command)
 	stop := make(chan struct{})
@@ -542,6 +642,8 @@ func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.Address
 		shutdownCh:           stop,
 		forceStopCh:          forceStop,
 		addressResolver:      addressResolver,
+		instancesDir:         instancesDir,
+		imageClient:          imageClient,
 	}
 
 	if linuxSettings := config.GetLinuxSettings(); linuxSettings != nil {
@@ -553,6 +655,8 @@ func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.Address
 	}
 
 	go instanceLifecycleLoop(monitor, forceStop, commandCh, stop, instanceCh)
+
+	q.reattachOnStartup()
 
 	return q, nil
 }

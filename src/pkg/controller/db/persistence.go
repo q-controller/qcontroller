@@ -17,7 +17,6 @@ var ErrConstraint = errors.New("constraint violation")
 const (
 	instancePrefix = "instance:"
 	hwaddrPrefix   = "hwaddr:"
-	pidPrefix      = "pid:"
 )
 
 type databaseImpl struct {
@@ -72,7 +71,7 @@ func (d *databaseImpl) List() ([]*vmv1.Instance, error) {
 
 func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 	// Enforce NOT NULL and CHECK constraints
-	if instance.Id == "" || instance.Path == "" || instance.Hardware == nil ||
+	if instance.Id == "" || instance.ImageId == "" || instance.Hardware == nil ||
 		(instance.Hwaddr == nil || *instance.Hwaddr == "") {
 		return nil, fmt.Errorf("%w: required field missing", ErrConstraint)
 	}
@@ -81,7 +80,6 @@ func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 		return nil, fmt.Errorf("%w: cpus, memory, and disk must be > 0", ErrConstraint)
 	}
 
-	// Enforce uniqueness for HwAddr and Pid
 	err := d.db.Update(func(txn *badger.Txn) error {
 		// Check HwAddr uniqueness
 		hwKey := []byte(hwaddrPrefix + *instance.Hwaddr)
@@ -100,26 +98,7 @@ func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 		} else if err != badger.ErrKeyNotFound {
 			return err
 		}
-		// Check Pid uniqueness
-		if instance.Pid != nil {
-			pidKey := []byte(fmt.Sprintf("%s%d", pidPrefix, *instance.Pid))
-			item, err := txn.Get(pidKey)
-			if err == nil {
-				var existing string
-				if err := item.Value(func(val []byte) error {
-					existing = string(val)
-					return nil
-				}); err != nil {
-					return err
-				}
-				if existing != instance.Id {
-					return fmt.Errorf("%w: pid not unique", ErrConstraint)
-				}
-			} else if err != badger.ErrKeyNotFound {
-				return err
-			}
-		}
-		// Remove old HwAddr and Pid secondary keys if updating existing instance
+		// Remove old HwAddr secondary key if updating existing instance
 		oldInst := &vmv1.Instance{}
 		item, err = txn.Get([]byte(instancePrefix + instance.Id))
 		if err == nil {
@@ -130,11 +109,6 @@ func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 			}
 			if oldInst.Hwaddr != nil && *oldInst.Hwaddr != "" && (instance.Hwaddr == nil || *oldInst.Hwaddr != *instance.Hwaddr) {
 				if err := txn.Delete([]byte(hwaddrPrefix + *oldInst.Hwaddr)); err != nil && err != badger.ErrKeyNotFound {
-					return err
-				}
-			}
-			if oldInst.Pid != nil && (instance.Pid == nil || *oldInst.Pid != *instance.Pid) {
-				if err := txn.Delete([]byte(fmt.Sprintf("%s%d", pidPrefix, *oldInst.Pid))); err != nil && err != badger.ErrKeyNotFound {
 					return err
 				}
 			}
@@ -152,11 +126,6 @@ func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 		// Set secondary keys
 		if instance.Hwaddr != nil && *instance.Hwaddr != "" {
 			if err := txn.Set([]byte(hwaddrPrefix+*instance.Hwaddr), []byte(instance.Id)); err != nil {
-				return err
-			}
-		}
-		if instance.Pid != nil {
-			if err := txn.Set([]byte(fmt.Sprintf("%s%d", pidPrefix, *instance.Pid)), []byte(instance.Id)); err != nil {
 				return err
 			}
 		}
@@ -189,11 +158,6 @@ func (d *databaseImpl) Remove(id string) error {
 		// Remove secondary keys
 		if inst.Hwaddr != nil && *inst.Hwaddr != "" {
 			if err := txn.Delete([]byte(hwaddrPrefix + *inst.Hwaddr)); err != nil && err != badger.ErrKeyNotFound {
-				return err
-			}
-		}
-		if inst.Pid != nil {
-			if err := txn.Delete([]byte(fmt.Sprintf("%s%d", pidPrefix, *inst.Pid))); err != nil && err != badger.ErrKeyNotFound {
 				return err
 			}
 		}

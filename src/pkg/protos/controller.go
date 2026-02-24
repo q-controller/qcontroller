@@ -12,7 +12,6 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
 	"github.com/q-controller/qcontroller/src/pkg/controller/vm"
 	"github.com/q-controller/qcontroller/src/pkg/events"
-	"github.com/q-controller/qcontroller/src/pkg/images"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -78,7 +77,7 @@ func (s *Server) Info(ctx context.Context, request *servicesv1.InfoRequest) (*se
 	}, nil
 }
 
-func NewController(settings *settingsv1.ControllerConfig, imageClient images.ImageClient, eventPublisher *events.Publisher) (servicesv1.ControllerServiceServer, error) {
+func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher) (servicesv1.ControllerServiceServer, error) {
 	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0755); mkdirErr != nil {
 		return nil, mkdirErr
 	}
@@ -88,7 +87,7 @@ func NewController(settings *settingsv1.ControllerConfig, imageClient images.Ima
 		return nil, stateErr
 	}
 
-	manager := vm.CreateManager(settings.Root, settings.QemuEndpoint, state, imageClient, eventPublisher)
+	manager := vm.CreateManager(settings.QemuEndpoint, state, eventPublisher)
 	if manager == nil {
 		return nil, fmt.Errorf("failed to create a manager")
 	}

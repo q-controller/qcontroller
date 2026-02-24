@@ -89,6 +89,8 @@ message QemuConfig {
         LinuxSettings linux_settings = 4;
         MacosSettings macos_settings = 5;
     }
+
+    string file_registry_endpoint = 6;
 }
 
 message GatewayConfig {
