@@ -9,10 +9,12 @@ import (
 
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/qemu/process"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolver, stop <-chan struct{}) error {
@@ -59,7 +61,19 @@ func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolve
 		}
 	}()
 
-	reg, regErr := protos.NewQemuService(monitor, addressResolver, config)
+	fileRegistryConn, fileRegistryConnErr := grpc.NewClient(config.FileRegistryEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if fileRegistryConnErr != nil {
+		return fmt.Errorf("failed to connect to file registry: %w", fileRegistryConnErr)
+	}
+	defer fileRegistryConn.Close()
+
+	fileRegistryClient := servicesv1.NewFileRegistryServiceClient(fileRegistryConn)
+	imageClient, imageClientErr := images.CreateImageClient(fileRegistryClient)
+	if imageClientErr != nil {
+		return fmt.Errorf("failed to create image client: %w", imageClientErr)
+	}
+
+	reg, regErr := protos.NewQemuService(monitor, addressResolver, config, imageClient)
 	if regErr != nil {
 		return fmt.Errorf("failed to create server %w", regErr)
 	}

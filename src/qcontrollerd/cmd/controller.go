@@ -10,7 +10,6 @@ import (
 	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/events"
-	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
@@ -70,22 +69,12 @@ var controllerCmd = &cobra.Command{
 		}
 		servicesv1.RegisterFileRegistryServiceServer(s, reg)
 
-		fileRegistryClient, clientErr := createFileRegistryClient(lis.Addr().String())
-		if clientErr != nil {
-			return fmt.Errorf("failed to create file registry client: %w", clientErr)
-		}
-
-		imageClient, imageClientErr := images.CreateImageClient(fileRegistryClient)
-		if imageClientErr != nil {
-			return fmt.Errorf("failed to create image client: %w", imageClientErr)
-		}
-
 		eventPublisher, eventPublisherErr := events.NewEventPublisher(context.Background(), lis.Addr().String())
 		if eventPublisherErr != nil {
 			return fmt.Errorf("failed to create event publisher: %w", eventPublisherErr)
 		}
 
-		contr, contrErr := protos.NewController(config, imageClient, eventPublisher)
+		contr, contrErr := protos.NewController(config, eventPublisher)
 		if contrErr != nil {
 			return fmt.Errorf("failed to create server %w", contrErr)
 		}

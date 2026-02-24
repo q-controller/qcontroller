@@ -31,8 +31,7 @@ message Instance {
     string id = 1;
     settings.v1.VM hardware = 2;
     optional string hwaddr = 3;
-    string path = 4;
+    string image_id = 4;
     State state = 5;
-    optional int32 pid = 6;
-    CloudInit cloudinit = 7;
+    CloudInit cloudinit = 6;
 }
