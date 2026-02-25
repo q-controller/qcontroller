@@ -139,37 +139,48 @@ func NewEventPublisher(ctx context.Context, endpoint string) (*Publisher, error)
 		}()
 
 		cli := v1.NewEventServiceClient(conn)
-		stream, streamErr := cli.Publish(ctx)
-		if streamErr != nil {
-			return
-		}
-		defer func() {
-			_ = stream.CloseSend()
-		}()
 
 		for {
-			select {
-			case <-stream.Context().Done():
-				for {
-					select {
-					case event, ok := <-events:
-						if !ok {
-							return
-						}
-						if sendErr := stream.Send(event); sendErr != nil {
-							return
-						}
-					default:
+			// Establish stream with retry
+			var stream v1.EventService_PublishClient
+			for {
+				var streamErr error
+				stream, streamErr = cli.Publish(ctx)
+				if streamErr == nil {
+					break
+				}
+				slog.Debug("Event service not ready, retrying", "error", streamErr)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Second):
+				}
+			}
+
+			// Send events until stream breaks
+			streamBroken := false
+			for !streamBroken {
+				select {
+				case <-ctx.Done():
+					_ = stream.CloseSend()
+					return
+				case event, ok := <-events:
+					if !ok {
+						_ = stream.CloseSend()
 						return
 					}
+					if sendErr := stream.Send(event); sendErr != nil {
+						slog.Warn("Event stream broken, reconnecting", "error", sendErr)
+						streamBroken = true
+					}
 				}
-			case event, ok := <-events:
-				if !ok {
-					return
-				}
-				if sendErr := stream.Send(event); sendErr != nil {
-					return
-				}
+			}
+
+			// Back off before reconnecting
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
 			}
 		}
 	}()
