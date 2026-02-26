@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/q-controller/qapi-client/src/client"
@@ -41,6 +42,8 @@ type QemuServer struct {
 	addressResolver      ip.AddressResolver
 	instancesDir         string
 	imageClient          images.ImageClient
+	startingMu           sync.Mutex
+	starting             map[string]struct{}
 }
 
 type InstanceEvent struct {
@@ -164,6 +167,20 @@ func (q *QemuServer) instanceDir(id string) string {
 func (q *QemuServer) Start(ctx context.Context,
 	req *servicesv1.QemuServiceStartRequest) (*servicesv1.QemuServiceStartResponse, error) {
 	id := req.Config.Id
+
+	q.startingMu.Lock()
+	if _, ok := q.starting[id]; ok {
+		q.startingMu.Unlock()
+		return nil, status.Errorf(codes.AlreadyExists, "instance %s is already starting", id)
+	}
+	q.starting[id] = struct{}{}
+	q.startingMu.Unlock()
+	defer func() {
+		q.startingMu.Lock()
+		delete(q.starting, id)
+		q.startingMu.Unlock()
+	}()
+
 	dir := q.instanceDir(id)
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -650,6 +667,7 @@ func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.Address
 		addressResolver:      addressResolver,
 		instancesDir:         instancesDir,
 		imageClient:          imageClient,
+		starting:             make(map[string]struct{}),
 	}
 
 	if linuxSettings := config.GetLinuxSettings(); linuxSettings != nil {
