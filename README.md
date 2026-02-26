@@ -4,14 +4,18 @@
 
 **QEMU VM Controller** (or `qcontroller`) is a flexible, API-driven tool for managing QEMU-based virtual machine instances on Linux and macOS. It is designed for users who need precise control over VM networking, image management, and orchestration—whether for local development, testing, or reproducible infrastructure setups.
 
-`qcontroller` provides a unified interface for four primary VM operations:
+`qcontroller` provides a unified interface for VM operations:
 
-1. **Launch** – Create and optionally start a new VM from a known image.
-2. **Start** – Resume a stopped VM.
+1. **Create** – Create and optionally start a new VM from a known image, on any node.
+2. **Start** – Resume a stopped VM (async — returns immediately, transitions via events).
 3. **Stop** – Gracefully or forcefully stop a running VM.
-4. **Info** – Query the status and configuration of a VM.
+4. **Remove** – Delete a VM and clean up its resources.
+5. **Info** – Query the status, configuration, and runtime info of VMs.
+6. **ListNodes** – List all configured nodes in the cluster.
 
 Operations are defined using [Protocol Buffers](/src/protos/) and exposed via both **gRPC** and a **RESTful HTTP gateway**, making integration with scripts, dashboards, or automation frameworks straightforward.
+
+VMs can be managed across multiple nodes. Each node runs the full set of services (`qemu`, `fileregistry`, `controller`, `gateway`). Controllers discover remote VMs via EventService subscriptions and route operations to the appropriate node. File registries can be configured with an `upstream_endpoint` to pull missing images from another node on demand.
 
 ---
 
@@ -27,11 +31,12 @@ Operations are defined using [Protocol Buffers](/src/protos/) and exposed via bo
 
 - 🛠 **Single static binary**: All logic is bundled into one Go binary with multiple subcommands.
 - 🖥 **Cross-platform support**: Works on Linux and macOS (Intel tested; Apple Silicon supported via QEMU).
+- 🌐 **Multi-node support**: Manage VMs across multiple physical nodes from a single control plane.
 - 🎯 **Modern web UI**: Full-featured React-based interface available at [qcontroller-ui](https://github.com/q-controller/qcontroller-ui).
 - 🧠 **Declarative VM descriptions**: Define VM specs via JSON configs matching Protobuf definitions.
 - 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
-- **Real-time WebSocket updates**: Get live VM state changes via WebSocket at `/ws` endpoint.
-- **Custom image support**: Upload and manage your own VM images via API.
+- **Real-time event streaming**: Live VM state changes via WebSocket at `/ws`, powered by EventService subscriptions.
+- **Automatic image sync**: File registries pull missing images from an upstream registry on demand.
 - 📜 **Auto-generated OpenAPI schema**: Serves interactive API docs using [http-swagger](https://github.com/swaggo/http-swagger).
 - 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
 
@@ -75,13 +80,16 @@ make
 
 The compiled binary provides the following subcommands:
 
-* `qemu` – Thin wrapper for the QEMU system binary; handles actual VM process execution.
-* `controller` – Manages VM lifecycle and communication via gRPC.
+* `qemu` – Manages VM process execution. Requires root for networking (TAP on Linux, vmnet on macOS).
+* `controller` – Orchestrates VM lifecycle across local and remote nodes. Local node state is polled from QemuService; remote node state is received via EventService subscriptions with auto-reconnect.
 * `gateway` – Exposes REST endpoints mapped from gRPC via gRPC-Gateway.
+* `fileregistry` – Manages VM image storage. Supports an optional `upstream_endpoint` to transparently fetch missing images from a master registry.
 
 > **Separation of Controller and QEMU**:
-> It's important to note that the application was split into two  components: the controller and QEMU. This separation was necessary because the qemu command requires elevated privileges due to its use of networking features such as TAP on Linux and vmnet on macOS.
-> To avoid granting elevated rights to the entire application, a minimal QEMU service was created. This service runs as root and is responsible solely for executing the qemu command. The controller, on the other hand, manages the virtual machine lifecycle and runs as a non-root user, ensuring a more secure and controlled execution environment.
+> The qemu service requires elevated privileges for networking (TAP/vmnet). To avoid granting root to the entire application, it runs as a separate process. The controller and other services run as non-root users.
+
+> **Multi-node architecture**:
+> In multi-node setups, each node runs all four services. Nodes list each other as `remotes` in their controller config. Each controller subscribes to its remote nodes' EventService streams for real-time VM state updates. File registries can optionally set `upstream_endpoint` to pull images from another node's registry on first use.
 
 ### Running the App
 
@@ -93,15 +101,25 @@ If you installed via the macOS package, services are automatically started and m
 #### Manual Execution
 Each subcommand expects a JSON configuration file matching its Protobuf [definitions](/src/protos/settings/v1/settings.proto).
 
-All subcommands must run concurrently; orchestration (e.g., via `systemd` on Linux) is recommended. A [startup script](/start.sh) is provided to run all required components together:
+A startup script is provided for running all services together during development:
+
 ```shell
-bash start.sh -h
+./start.sh --rundir /tmp/qcontroller --bin ./build/qcontrollerd
 ```
 
-This command will start all three components:
-- ➜ gateway: `http://localhost:8080`
-- ➜ qemu: `0.0.0.0:8008`
-- ➜ controller: `0.0.0.0:8009`
+Run `./start.sh --help` for full usage details (interface, CIDR, DHCP range, macOS mode).
+
+To add remote nodes, edit the `remotes` array in the generated controller config. Each remote entry needs a `name` and `endpoint` (the remote node's controller address).
+
+For multi-node setups with overlay networking, see the helper scripts:
+- [`setup-nebula.sh`](/setup-nebula.sh) — generates Nebula CA, certificates, and configs for two nodes
+- [`setup-overlay.sh`](/setup-overlay.sh) — adds/removes nft forwarding rules between the QEMU bridge and the overlay interface
+
+Default service ports:
+- fileregistry: `0.0.0.0:8010`
+- qemu: `0.0.0.0:8008`
+- controller: `0.0.0.0:8009`
+- gateway: `http://localhost:8080`
 
 Then access the interfaces:
 - Web UI: `http://localhost:8080/ui/`
