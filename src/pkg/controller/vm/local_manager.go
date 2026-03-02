@@ -43,7 +43,7 @@ func (n *localNodeManager) qemuList(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	resp, err := servicesv1.NewQemuServiceClient(conn).List(ctx, &servicesv1.QemuServiceListRequest{})
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (n *localNodeManager) Start(ctx context.Context, name string) error {
 		n.setInstanceState(inst.Id, vmv1.State_STATE_STOPPED)
 		return dialErr
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if _, startErr := servicesv1.NewQemuServiceClient(conn).Start(ctx, &servicesv1.QemuServiceStartRequest{
 		Config: &servicesv1.QemuConfig{
@@ -139,7 +139,7 @@ func (n *localNodeManager) Stop(ctx context.Context, name string, force bool) er
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_, err = servicesv1.NewQemuServiceClient(conn).Stop(ctx, &servicesv1.QemuServiceStopRequest{Id: name, Force: force})
 	return err
 }
@@ -167,7 +167,7 @@ func (n *localNodeManager) Remove(ctx context.Context, name string) error {
 		slog.Warn("Failed to connect to QEMU for cleanup", "id", name, "error", dialErr)
 		return nil
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if _, removeErr := servicesv1.NewQemuServiceClient(conn).Remove(ctx, &servicesv1.QemuServiceRemoveRequest{Id: name}); removeErr != nil {
 		slog.Warn("Failed to remove instance from QEMU", "id", name, "error", removeErr)
 	}
@@ -233,7 +233,7 @@ func (n *localNodeManager) batchEnrichWithRuntime(ctx context.Context, infos []*
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	resp, err := servicesv1.NewQemuServiceClient(conn).Info(ctx, &servicesv1.QemuServiceInfoRequest{Ids: runningIDs})
 	if err != nil {
 		return

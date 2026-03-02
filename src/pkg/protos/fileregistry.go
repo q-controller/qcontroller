@@ -153,7 +153,7 @@ func (f *FileRegistry) fetchFromUpstream(ctx context.Context, imageId string) er
 	if err != nil {
 		return fmt.Errorf("dial upstream: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	downloadStream, err := servicesv1.NewFileRegistryServiceClient(conn).DownloadImage(ctx, &servicesv1.DownloadImageRequest{ImageId: imageId})
 	if err != nil {
@@ -165,7 +165,7 @@ func (f *FileRegistry) fetchFromUpstream(ctx context.Context, imageId string) er
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	for {
 		chunk, recvErr := downloadStream.Recv()
@@ -173,11 +173,11 @@ func (f *FileRegistry) fetchFromUpstream(ctx context.Context, imageId string) er
 			break
 		}
 		if recvErr != nil {
-			tmpFile.Close()
+			_ = tmpFile.Close()
 			return fmt.Errorf("recv chunk: %w", recvErr)
 		}
 		if _, writeErr := tmpFile.Write(chunk.Chunk); writeErr != nil {
-			tmpFile.Close()
+			_ = tmpFile.Close()
 			return fmt.Errorf("write chunk: %w", writeErr)
 		}
 	}
@@ -190,7 +190,7 @@ func (f *FileRegistry) fetchFromUpstream(ctx context.Context, imageId string) er
 	if err != nil {
 		return fmt.Errorf("reopen temp file: %w", err)
 	}
-	defer reopened.Close()
+	defer func() { _ = reopened.Close() }()
 
 	if err := f.storage.Store(imageId, reopened); err != nil {
 		return fmt.Errorf("store image: %w", err)

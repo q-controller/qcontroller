@@ -37,7 +37,7 @@ func (n *remoteNodeManager) Create(ctx context.Context, id, imageId string,
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_, err = servicesv1.NewControllerServiceClient(conn).Create(ctx, &servicesv1.CreateRequest{
 		Name:      id,
 		Image:     imageId,
@@ -52,7 +52,7 @@ func (n *remoteNodeManager) Start(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_, err = servicesv1.NewControllerServiceClient(conn).Start(ctx, &servicesv1.StartRequest{Name: name})
 	return err
 }
@@ -62,7 +62,7 @@ func (n *remoteNodeManager) Stop(ctx context.Context, name string, force bool) e
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_, err = servicesv1.NewControllerServiceClient(conn).Stop(ctx, &servicesv1.StopRequest{Name: name, Force: force})
 	return err
 }
@@ -72,7 +72,7 @@ func (n *remoteNodeManager) Remove(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_, err = servicesv1.NewControllerServiceClient(conn).Remove(ctx, &servicesv1.RemoveRequest{Name: name})
 	return err
 }
@@ -82,7 +82,7 @@ func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*servicesv
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	resp, err := servicesv1.NewControllerServiceClient(conn).Info(ctx, &servicesv1.InfoRequest{Name: name})
 	if err != nil {
 		return nil, err

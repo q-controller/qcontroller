@@ -65,7 +65,7 @@ func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolve
 	if fileRegistryConnErr != nil {
 		return fmt.Errorf("failed to connect to file registry: %w", fileRegistryConnErr)
 	}
-	defer fileRegistryConn.Close()
+	defer func() { _ = fileRegistryConn.Close() }()
 
 	fileRegistryClient := servicesv1.NewFileRegistryServiceClient(fileRegistryConn)
 	imageClient, imageClientErr := images.CreateImageClient(fileRegistryClient)
