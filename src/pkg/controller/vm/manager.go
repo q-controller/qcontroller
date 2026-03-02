@@ -330,7 +330,7 @@ func (m *Manager) runSubscription(nodeName, endpoint string) error {
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", endpoint, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Seed initial state before subscribing.
 	// On reconnect, also reconcile: remove VMs that disappeared while disconnected.

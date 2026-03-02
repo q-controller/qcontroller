@@ -193,12 +193,12 @@ func (q *QemuServer) Start(ctx context.Context,
 		downloadStart := time.Now()
 		tmpPath := imagePath + ".tmp"
 		if downloadErr := q.imageClient.Download(ctx, req.Config.ImageId, tmpPath); downloadErr != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			slog.Error("Failed to download image", "image_id", req.Config.ImageId, "instance", id, "error", downloadErr)
 			return nil, status.Errorf(codes.Internal, "failed to download image: %v", downloadErr)
 		}
 		if renameErr := os.Rename(tmpPath, imagePath); renameErr != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return nil, status.Errorf(codes.Internal, "failed to finalize image: %v", renameErr)
 		}
 		if info, statErr := os.Stat(imagePath); statErr == nil {
