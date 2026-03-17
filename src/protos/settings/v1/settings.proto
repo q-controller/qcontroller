@@ -29,14 +29,20 @@ message Cache {
 message Dhcp {
     string start = 1;
     string end = 2;
-    repeated string dns = 3;
     int64 lease_time = 4;
     string lease_file = 5;
 }
 
 message Dns {
     string zone = 1;
-    string resolv_conf = 2;
+    oneof upstream {
+        string resolv_conf = 2;
+        StaticUpstreams static = 3;
+    }
+}
+
+message StaticUpstreams {
+    repeated string endpoints = 1;
 }
 
 message Network {

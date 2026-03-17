@@ -153,12 +153,13 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
                 "start": "${START}",
                 "end": "${END}",
                 "lease_time": 86400,
-                "dns": ["8.8.8.8", "8.8.4.4"],
                 "lease_file": "${RUNDIR}/qcontroller-dhcp-leases"
             },
             "dns": {
                 "zone": ".",
-                "resolv_conf": "/etc/resolv.conf"
+                "static": {
+                    "endpoints": ["127.0.0.53:53"]
+                }
             }
         }
     }
