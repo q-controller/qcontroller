@@ -63,17 +63,8 @@ var qemuCmd = &cobra.Command{
 		}
 
 		if inNamespace {
-			dns := []net.IP{linuxConfig.GatewayIp}
-			for _, ipStr := range config.GetLinuxSettings().Network.Dhcp.Dns {
-				ip := net.ParseIP(ipStr)
-				if ip == nil {
-					return fmt.Errorf("failed to parse dns ip %s", ipStr)
-				}
-				dns = append(dns, ip)
-			}
-
 			dhcpServer, dhcpServerErr := dhcp.StartDHCPServer(
-				dhcp.WithDNS(dns...),
+				dhcp.WithDNS(linuxConfig.GatewayIp),
 				dhcp.WithInterface(linuxConfig.Name, linuxConfig.BridgeIp),
 				dhcp.WithLeaseFile(config.GetLinuxSettings().Network.Dhcp.LeaseFile),
 				dhcp.WithRange(linuxConfig.StartIp, linuxConfig.EndIp),
@@ -117,11 +108,18 @@ var qemuCmd = &cobra.Command{
 				return fmt.Errorf("failed to create network: %w", netwErr)
 			}
 
-			if config.GetLinuxSettings().Network.Dns != nil {
-				forwarder, forwarderErr := dnsresolver.NewDNSFailoverForwarder(cmd.Context(),
+			if dnsCfg := config.GetLinuxSettings().Network.Dns; dnsCfg != nil {
+				opts := []dnsresolver.DNSForwarderOption{
 					dnsresolver.WithForwarderAddress(ip.String()),
-					dnsresolver.WithForwarderTimeout(2*time.Second),
-				)
+					dnsresolver.WithForwarderTimeout(2 * time.Second),
+				}
+				switch v := dnsCfg.Upstream.(type) {
+				case *settingsv1.Dns_ResolvConf:
+					opts = append(opts, dnsresolver.WithResolvconfPath(v.ResolvConf))
+				case *settingsv1.Dns_Static:
+					opts = append(opts, dnsresolver.WithUpstreams(v.Static.GetEndpoints()))
+				}
+				forwarder, forwarderErr := dnsresolver.NewDNSFailoverForwarder(cmd.Context(), opts...)
 				if forwarderErr != nil {
 					return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
 				}
