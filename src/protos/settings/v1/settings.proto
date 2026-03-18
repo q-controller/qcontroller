@@ -77,6 +77,7 @@ message MacosSettings {
     Mode mode = 1;
     optional Bridged bridged = 2;
     optional Shared shared = 3;
+    Dns dns = 4;
 }
 
 message Node {

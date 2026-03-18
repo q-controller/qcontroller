@@ -110,7 +110,7 @@ var qemuCmd = &cobra.Command{
 
 			if dnsCfg := config.GetLinuxSettings().Network.Dns; dnsCfg != nil {
 				opts := []dnsresolver.DNSForwarderOption{
-					dnsresolver.WithForwarderAddress(ip.String()),
+					dnsresolver.WithForwarderAddress(fmt.Sprintf("%s:53", ip.String())),
 					dnsresolver.WithForwarderTimeout(2 * time.Second),
 				}
 				switch v := dnsCfg.Upstream.(type) {
@@ -123,7 +123,11 @@ var qemuCmd = &cobra.Command{
 				if forwarderErr != nil {
 					return fmt.Errorf("failed to create dns forwarder: %w", forwarderErr)
 				}
-				defer forwarder.Stop()
+				stop, serveErr := forwarder.Serve()
+				if serveErr != nil {
+					return fmt.Errorf("failed to start dns forwarder: %w", serveErr)
+				}
+				defer stop()
 			}
 
 			subscription, subscribeErr := ifc.SubscribeDefaultInterfaceChanges()
