@@ -175,6 +175,9 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
         "mode": "${MACOS_MODE}",
         "bridged": {
             "interface": "${INTERFACE_NAME}"
+        },
+        "dns": {
+            "zone": "."
         }
     }
 }
@@ -206,6 +209,9 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
             "subnet": "${SUBNET}",
             "start_address": "${START_IP}",
             "end_address": "${END_IP}"
+        },
+        "dns": {
+            "zone": "."
         }
     }
 }
