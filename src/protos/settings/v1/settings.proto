@@ -90,6 +90,7 @@ message ControllerConfig {
     string root = 2;
     Node local = 3;
     repeated Node remotes = 4;
+    string file_registry_endpoint = 5;
 }
 
 message QemuConfig {
@@ -117,5 +118,4 @@ message FileRegistryConfig {
     Cache cache = 2;
     string root = 3;
     string events_endpoint = 4;
-    string upstream_endpoint = 5;
 }

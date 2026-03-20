@@ -43,7 +43,6 @@ var fileRegistryCmd = &cobra.Command{
 		reg, regErr := protos.NewFileRegistry(
 			filepath.Join(config.Root, config.Cache.Root),
 			config.EventsEndpoint,
-			config.UpstreamEndpoint,
 		)
 		if regErr != nil {
 			return fmt.Errorf("failed to create file registry: %w", regErr)

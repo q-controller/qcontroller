@@ -13,7 +13,6 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/images/storage"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
@@ -21,10 +20,9 @@ const chunkSize = 1024 * 1024 // 1 MB
 
 type FileRegistry struct {
 	servicesv1.UnimplementedFileRegistryServiceServer
-	tempDir          string
-	storage          storage.StorageBackend
-	eventPublisher   *events.Publisher
-	upstreamEndpoint string
+	tempDir        string
+	storage        storage.StorageBackend
+	eventPublisher *events.Publisher
 }
 
 func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.UploadImageRequest, servicesv1.UploadImageResponse]) error {
@@ -110,12 +108,7 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 	}
 
 	if !exists {
-		if f.upstreamEndpoint == "" {
-			return status.Errorf(codes.NotFound, "image not found: %s", req.ImageId)
-		}
-		if err := f.fetchFromUpstream(stream.Context(), req.ImageId); err != nil {
-			return status.Errorf(codes.Internal, "failed to fetch image from upstream: %v", err)
-		}
+		return status.Errorf(codes.NotFound, "image not found: %s", req.ImageId)
 	}
 
 	file, err := f.storage.Retrieve(req.ImageId)
@@ -143,60 +136,6 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 		}
 	}
 
-	return nil
-}
-
-func (f *FileRegistry) fetchFromUpstream(ctx context.Context, imageId string) error {
-	slog.Info("Fetching image from upstream", "image", imageId, "upstream", f.upstreamEndpoint)
-
-	conn, err := grpc.NewClient(f.upstreamEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return fmt.Errorf("dial upstream: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
-
-	downloadStream, err := servicesv1.NewFileRegistryServiceClient(conn).DownloadImage(ctx, &servicesv1.DownloadImageRequest{ImageId: imageId})
-	if err != nil {
-		return fmt.Errorf("download from upstream: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp(f.tempDir, imageId+"-*")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-
-	for {
-		chunk, recvErr := downloadStream.Recv()
-		if recvErr == io.EOF {
-			break
-		}
-		if recvErr != nil {
-			_ = tmpFile.Close()
-			return fmt.Errorf("recv chunk: %w", recvErr)
-		}
-		if _, writeErr := tmpFile.Write(chunk.Chunk); writeErr != nil {
-			_ = tmpFile.Close()
-			return fmt.Errorf("write chunk: %w", writeErr)
-		}
-	}
-
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
-	}
-
-	reopened, err := os.Open(tmpPath)
-	if err != nil {
-		return fmt.Errorf("reopen temp file: %w", err)
-	}
-	defer func() { _ = reopened.Close() }()
-
-	if err := f.storage.Store(imageId, reopened); err != nil {
-		return fmt.Errorf("store image: %w", err)
-	}
-
-	slog.Info("Image fetched from upstream", "image", imageId)
 	return nil
 }
 
@@ -249,7 +188,7 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImage
 	return resp, nil
 }
 
-func NewFileRegistry(root, eventsEndpoint, upstreamEndpoint string) (servicesv1.FileRegistryServiceServer, error) {
+func NewFileRegistry(root, eventsEndpoint string) (servicesv1.FileRegistryServiceServer, error) {
 	// Create temp directory
 	tempDir, pathErr := os.MkdirTemp("", "fileregistry-*")
 	if pathErr != nil {
@@ -269,9 +208,8 @@ func NewFileRegistry(root, eventsEndpoint, upstreamEndpoint string) (servicesv1.
 	}
 
 	return &FileRegistry{
-		tempDir:          tempDir,
-		storage:          storageBackend,
-		eventPublisher:   eventPublisher,
-		upstreamEndpoint: upstreamEndpoint,
+		tempDir:        tempDir,
+		storage:        storageBackend,
+		eventPublisher: eventPublisher,
 	}, nil
 }

@@ -13,9 +13,7 @@ import (
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/events"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
+	"github.com/q-controller/qcontroller/src/pkg/images"
 )
 
 // Manager orchestrates VM operations across local and remote nodes.
@@ -37,7 +35,7 @@ type Manager struct {
 	eventsPublisher *events.Publisher
 }
 
-func newManager(local *settingsv1.Node, remotes []*settingsv1.Node, state controller.State, eventPublisher *events.Publisher) (*Manager, error) {
+func newManager(local *settingsv1.Node, remotes []*settingsv1.Node, state controller.State, eventPublisher *events.Publisher, localImages images.ImageClient) (*Manager, error) {
 	nodes := make(map[string]NodeManager)
 
 	var localName string
@@ -49,8 +47,15 @@ func newManager(local *settingsv1.Node, remotes []*settingsv1.Node, state contro
 		nodes[local.Name] = nm
 		localName = local.Name
 	}
+	if len(remotes) > 0 && localImages == nil {
+		return nil, fmt.Errorf("file_registry_endpoint must be configured when remote nodes are used")
+	}
 	for _, remote := range remotes {
-		nodes[remote.Name] = newRemoteNodeManager(remote.Name, remote.Endpoint)
+		nm, nmErr := newRemoteNodeManager(remote.Name, remote.Endpoint, localImages)
+		if nmErr != nil {
+			return nil, nmErr
+		}
+		nodes[remote.Name] = nm
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -220,9 +225,9 @@ func (m *Manager) resolveNode(id string) (string, NodeManager, error) {
 var singleton *Manager
 var once sync.Once
 
-func CreateManager(local *settingsv1.Node, remotes []*settingsv1.Node, state controller.State, eventPublisher *events.Publisher) *Manager {
+func CreateManager(local *settingsv1.Node, remotes []*settingsv1.Node, state controller.State, eventPublisher *events.Publisher, localImages images.ImageClient) *Manager {
 	once.Do(func() {
-		mgr, mgrErr := newManager(local, remotes, state, eventPublisher)
+		mgr, mgrErr := newManager(local, remotes, state, eventPublisher, localImages)
 		if mgrErr != nil {
 			slog.Error("failed to create VM manager", "error", mgrErr)
 		}
@@ -319,29 +324,20 @@ func (m *Manager) subscribeToNode(nodeName, endpoint string) {
 }
 
 func (m *Manager) runSubscription(nodeName, endpoint string) error {
-	conn, err := grpc.NewClient(endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second,
-			Timeout:             10 * time.Second,
-			PermitWithoutStream: true,
-		}),
-	)
-	if err != nil {
-		return fmt.Errorf("dial %s: %w", endpoint, err)
+	nm, ok := m.nodes[nodeName]
+	if !ok {
+		return fmt.Errorf("node %s not found", nodeName)
 	}
-	defer func() { _ = conn.Close() }()
 
-	// Seed initial state before subscribing.
+	// Seed initial state via REST before subscribing to events.
 	// On reconnect, also reconcile: remove VMs that disappeared while disconnected.
-	controllerCli := servicesv1.NewControllerServiceClient(conn)
-	infoResp, infoErr := controllerCli.Info(m.ctx, &servicesv1.InfoRequest{})
+	infos, infoErr := nm.Info(m.ctx, "")
 	if infoErr != nil {
 		return fmt.Errorf("initial info %s: %w", nodeName, infoErr)
 	}
 
-	currentVMs := make(map[string]bool, len(infoResp.Info))
-	for _, info := range infoResp.Info {
+	currentVMs := make(map[string]bool, len(infos))
+	for _, info := range infos {
 		currentVMs[m.qualifyName(nodeName, info.Name)] = true
 	}
 
@@ -354,12 +350,12 @@ func (m *Manager) runSubscription(nodeName, endpoint string) error {
 			}
 		}
 	}
-	for _, info := range infoResp.Info {
+	for _, info := range infos {
 		m.vmIndex[m.qualifyName(nodeName, info.Name)] = nodeName
 	}
 	m.mutex.Unlock()
 
-	for _, info := range infoResp.Info {
+	for _, info := range infos {
 		info.Name = m.qualifyName(nodeName, info.Name)
 		info.Node = nodeName
 		if eventErr := m.eventsPublisher.VMUpdated(info); eventErr != nil {
@@ -367,15 +363,23 @@ func (m *Manager) runSubscription(nodeName, endpoint string) error {
 		}
 	}
 
-	stream, err := servicesv1.NewEventServiceClient(conn).Subscribe(m.ctx, &servicesv1.SubscribeRequest{})
+	// Subscribe to event stream via WebSocket.
+	sub, err := dialWebSocket(m.ctx, endpoint)
 	if err != nil {
 		return fmt.Errorf("subscribe %s: %w", nodeName, err)
 	}
+	defer func() { _ = sub.Close() }()
 
-	slog.Info("Subscribed to node events", "node", nodeName, "endpoint", endpoint)
+	// Close WebSocket when context is cancelled.
+	go func() {
+		<-m.ctx.Done()
+		_ = sub.Close()
+	}()
+
+	slog.Info("Subscribed to node events via WebSocket", "node", nodeName, "endpoint", endpoint)
 
 	for {
-		resp, recvErr := stream.Recv()
+		resp, recvErr := sub.Recv()
 		if recvErr != nil {
 			return fmt.Errorf("recv %s: %w", nodeName, recvErr)
 		}

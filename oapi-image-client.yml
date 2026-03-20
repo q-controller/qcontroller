@@ -1,0 +1,7 @@
+package: imageclient
+generate:
+  client: true
+  models: true
+  std-http-server: false
+  embedded-spec: false
+output: src/generated/oapi/imageclient/imageclient.go

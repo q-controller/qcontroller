@@ -15,7 +15,7 @@
 
 Operations are defined using [Protocol Buffers](/src/protos/) and exposed via both **gRPC** and a **RESTful HTTP gateway**, making integration with scripts, dashboards, or automation frameworks straightforward.
 
-VMs can be managed across multiple nodes. Each node runs the full set of services (`qemu`, `fileregistry`, `controller`, `gateway`). Controllers discover remote VMs via EventService subscriptions and route operations to the appropriate node. File registries can be configured with an `upstream_endpoint` to pull missing images from another node on demand.
+VMs can be managed across multiple nodes. Each node runs the full set of services (`qemu`, `fileregistry`, `controller`, `gateway`). All cross-node communication goes through the gateway's REST API and WebSocket event stream — gRPC is used only for localhost communication within each node. The controller pushes images to remote nodes before creating VMs there.
 
 ---
 
@@ -36,7 +36,7 @@ VMs can be managed across multiple nodes. Each node runs the full set of service
 - 🧠 **Declarative VM descriptions**: Define VM specs via JSON configs matching Protobuf definitions.
 - 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
 - **Real-time event streaming**: Live VM state changes via WebSocket at `/ws`, powered by EventService subscriptions.
-- **Automatic image sync**: File registries pull missing images from an upstream registry on demand.
+- **Automatic image distribution**: Controller pushes images to remote nodes before VM creation.
 - 📜 **Auto-generated OpenAPI schema**: Serves interactive API docs using [http-swagger](https://github.com/swaggo/http-swagger).
 - 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
 
@@ -81,15 +81,15 @@ make
 The compiled binary provides the following subcommands:
 
 * `qemu` – Manages VM process execution. Requires root for networking (TAP on Linux, vmnet on macOS).
-* `controller` – Orchestrates VM lifecycle across local and remote nodes. Local node state is polled from QemuService; remote node state is received via EventService subscriptions with auto-reconnect.
-* `gateway` – Exposes REST endpoints mapped from gRPC via gRPC-Gateway.
-* `fileregistry` – Manages VM image storage. Supports an optional `upstream_endpoint` to transparently fetch missing images from a master registry.
+* `controller` – Orchestrates VM lifecycle across local and remote nodes. Local node state is polled from QemuService; remote node state is received via WebSocket event subscriptions through the remote gateway, with auto-reconnect. When creating VMs on remote nodes, the controller pushes images via the gateway's REST API if they don't already exist there.
+* `gateway` – Exposes REST endpoints mapped from gRPC via gRPC-Gateway. Serves as the single entry point per node — all cross-node communication flows through it.
+* `fileregistry` – Manages VM image storage and provides chunked upload/download via gRPC (localhost only).
 
 > **Separation of Controller and QEMU**:
 > The qemu service requires elevated privileges for networking (TAP/vmnet). To avoid granting root to the entire application, it runs as a separate process. The controller and other services run as non-root users.
 
 > **Multi-node architecture**:
-> In multi-node setups, each node runs all four services. Nodes list each other as `remotes` in their controller config. Each controller subscribes to its remote nodes' EventService streams for real-time VM state updates. File registries can optionally set `upstream_endpoint` to pull images from another node's registry on first use.
+> In multi-node setups, each node runs all four services. Nodes list each other as `remotes` in their controller config, using the remote node's gateway URL (e.g. `http://192.168.1.5:8080`). The controller communicates with remote nodes exclusively through the gateway's REST API and WebSocket — only a single port needs to be exposed per node. Images are automatically pushed to remote nodes before VM creation.
 
 ### Running the App
 
@@ -109,17 +109,17 @@ A startup script is provided for running all services together during developmen
 
 Run `./start.sh --help` for full usage details (interface, CIDR, DHCP range, macOS mode).
 
-To add remote nodes, edit the `remotes` array in the generated controller config. Each remote entry needs a `name` and `endpoint` (the remote node's controller address).
+To add remote nodes, edit the `remotes` array in the generated controller config. Each remote entry needs a `name` and `endpoint` (the remote node's gateway URL, e.g. `http://192.168.1.5:8080`). You must also set `fileRegistryEndpoint` to the local file registry address so images can be pushed to remote nodes.
 
 For multi-node setups with overlay networking, see the helper scripts:
 - [`setup-nebula.sh`](/setup-nebula.sh) — generates Nebula CA, certificates, and configs for two nodes
 - [`setup-overlay.sh`](/setup-overlay.sh) — adds/removes nft forwarding rules between the QEMU bridge and the overlay interface
 
 Default service ports:
-- fileregistry: `0.0.0.0:8010`
-- qemu: `0.0.0.0:8008`
-- controller: `0.0.0.0:8009`
-- gateway: `http://localhost:8080`
+- gateway: `http://localhost:8080` (the only port exposed for cross-node communication)
+- controller: `localhost:8009` (gRPC, localhost only)
+- qemu: `localhost:8008` (gRPC, localhost only)
+- fileregistry: `localhost:8010` (gRPC, localhost only)
 
 Then access the interfaces:
 - Web UI: `http://localhost:8080/ui/`
