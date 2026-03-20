@@ -32,12 +32,19 @@ message ErrorEvent {
     string resource = 2;
 }
 
+message ProgressEvent {
+    string resource = 1;  // e.g. "image:ubuntu-22.04"
+    string message = 2;   // e.g. "Pushing image to node2"
+    int32 percent = 3;    // 0-100, -1 if unknown
+}
+
 message Update {
     int64 timestamp = 2;
     oneof payload {
         VMEvent vm_event = 3;
         ImageEvent image_event = 4;
         ErrorEvent error_event = 5;
+        ProgressEvent progress_event = 6;
     }
 }
 

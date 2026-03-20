@@ -51,7 +51,7 @@ func newManager(local *settingsv1.Node, remotes []*settingsv1.Node, state contro
 		return nil, fmt.Errorf("file_registry_endpoint must be configured when remote nodes are used")
 	}
 	for _, remote := range remotes {
-		nm, nmErr := newRemoteNodeManager(remote.Name, remote.Endpoint, localImages)
+		nm, nmErr := newRemoteNodeManager(remote.Name, remote.Endpoint, localImages, eventPublisher)
 		if nmErr != nil {
 			return nil, nmErr
 		}
@@ -82,7 +82,7 @@ func newManager(local *settingsv1.Node, remotes []*settingsv1.Node, state contro
 	return &manager, nil
 }
 
-func (m *Manager) Create(id, imageId string,
+func (m *Manager) Create(ctx context.Context, id, imageId string,
 	cpus uint32, memory, disk uint32, cloudInit *vmv1.CloudInit, node string) (string, error) {
 	m.mutex.RLock()
 	if node == "" {
@@ -98,7 +98,7 @@ func (m *Manager) Create(id, imageId string,
 		return "", fmt.Errorf("node %s not found", node)
 	}
 
-	if err := nm.Create(m.ctx, id, imageId, cpus, memory, disk, cloudInit); err != nil {
+	if err := nm.Create(ctx, id, imageId, cpus, memory, disk, cloudInit); err != nil {
 		return "", err
 	}
 
