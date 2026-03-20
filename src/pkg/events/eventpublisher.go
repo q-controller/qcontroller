@@ -96,6 +96,20 @@ func (p *Publisher) PublishImageUpdate(image *v1.VMImage, eventType v1.ImageEven
 	return p.publish(&v1.PublishRequest{Update: update})
 }
 
+func (p *Publisher) PublishProgress(resource, message string, percent int32) error {
+	update := &v1.Update{
+		Timestamp: time.Now().Unix(),
+		Payload: &v1.Update_ProgressEvent{
+			ProgressEvent: &v1.ProgressEvent{
+				Resource: resource,
+				Message:  message,
+				Percent:  percent,
+			},
+		},
+	}
+	return p.publish(&v1.PublishRequest{Update: update})
+}
+
 func (p *Publisher) PublishError(message, resource string) error {
 	update := &v1.Update{
 		Timestamp: time.Now().Unix(),

@@ -34,7 +34,7 @@ func (s *Server) Start(ctx context.Context, request *servicesv1.StartRequest) (*
 }
 
 func (s *Server) Create(ctx context.Context, request *servicesv1.CreateRequest) (*emptypb.Empty, error) {
-	qualifiedName, createErr := s.manager.Create(request.Name, request.Image,
+	qualifiedName, createErr := s.manager.Create(ctx, request.Name, request.Image,
 		request.Vm.Cpus, request.Vm.Memory,
 		request.Vm.Disk, request.CloudInit, request.Node)
 	if createErr != nil {

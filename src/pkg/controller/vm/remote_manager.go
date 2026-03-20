@@ -17,19 +17,21 @@ import (
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
+	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 )
 
 // remoteNodeManager implements NodeManager by calling a remote gateway's REST API.
 type remoteNodeManager struct {
-	name        string
-	endpoint    string
-	client      *cc.ClientWithResponses
-	imageClient *ic.ClientWithResponses
-	localImages images.ImageClient
+	name            string
+	endpoint        string
+	client          *cc.ClientWithResponses
+	imageClient     *ic.ClientWithResponses
+	localImages     images.ImageClient
+	eventsPublisher *events.Publisher
 }
 
-func newRemoteNodeManager(name, endpoint string, localImages images.ImageClient) (NodeManager, error) {
+func newRemoteNodeManager(name, endpoint string, localImages images.ImageClient, eventsPublisher *events.Publisher) (NodeManager, error) {
 	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
 		return nil, fmt.Errorf("remote node %q endpoint must include a scheme (http:// or https://), got: %s", name, endpoint)
 	}
@@ -44,11 +46,12 @@ func newRemoteNodeManager(name, endpoint string, localImages images.ImageClient)
 		return nil, fmt.Errorf("failed to create image client for %s: %w", name, err)
 	}
 	return &remoteNodeManager{
-		name:        name,
-		endpoint:    endpoint,
-		client:      client,
-		imageClient: imgClient,
-		localImages: localImages,
+		name:            name,
+		endpoint:        endpoint,
+		client:          client,
+		imageClient:     imgClient,
+		localImages:     localImages,
+		eventsPublisher: eventsPublisher,
 	}, nil
 }
 
@@ -106,7 +109,11 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 		}
 	}
 
+	progressResource := fmt.Sprintf("image:%s", imageId)
+	progressMsg := fmt.Sprintf("Pushing image to %s", n.name)
+
 	slog.Info("Pushing image to remote node", "image", imageId, "node", n.name)
+	_ = n.eventsPublisher.PublishProgress(progressResource, progressMsg, 0)
 
 	// Download from local file registry to a temp file.
 	tmpFile, err := os.CreateTemp("", "image-push-*")
@@ -120,6 +127,13 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 	if err := n.localImages.Download(ctx, imageId, tmpPath); err != nil {
 		return fmt.Errorf("download image locally: %w", err)
 	}
+
+	// Get image size for progress reporting.
+	fileStat, err := os.Stat(tmpPath)
+	if err != nil {
+		return fmt.Errorf("stat temp file: %w", err)
+	}
+	totalSize := fileStat.Size()
 
 	// Upload to the remote gateway via multipart POST.
 	// Use io.Pipe to stream the multipart body without buffering
@@ -147,7 +161,15 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 		if writeErr != nil {
 			return
 		}
-		if _, writeErr = io.Copy(part, file); writeErr != nil {
+		// Wrap with progress tracking.
+		tracker := &progressWriter{
+			dst:       part,
+			total:     totalSize,
+			resource:  progressResource,
+			message:   progressMsg,
+			publisher: n.eventsPublisher,
+		}
+		if _, writeErr = io.Copy(tracker, file); writeErr != nil {
 			return
 		}
 		writeErr = writer.Close()
@@ -162,6 +184,7 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 	}
 
 	slog.Info("Image pushed to remote node", "image", imageId, "node", n.name)
+	_ = n.eventsPublisher.PublishProgress(progressResource, progressMsg, 100)
 	return nil
 }
 
@@ -216,6 +239,32 @@ func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*servicesv
 		result = append(result, oapi2ProtoInfo(&item))
 	}
 	return result, nil
+}
+
+// progressWriter wraps a destination io.Writer and publishes progress events
+// as data flows through it. It throttles updates to avoid flooding the event
+// stream — a new event is published only when the percentage changes.
+type progressWriter struct {
+	dst       io.Writer
+	total     int64
+	written   int64
+	lastPct   int32
+	resource  string
+	message   string
+	publisher *events.Publisher
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n, err := pw.dst.Write(p)
+	pw.written += int64(n)
+	if pw.total > 0 {
+		pct := int32(pw.written * 100 / pw.total)
+		if pct != pw.lastPct {
+			pw.lastPct = pct
+			_ = pw.publisher.PublishProgress(pw.resource, pw.message, pct)
+		}
+	}
+	return n, err
 }
 
 // --- Conversion helpers: OpenAPI generated types → proto generated types ---
