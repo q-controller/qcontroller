@@ -33,6 +33,8 @@ generate:
 	mkdir -p src/qcontrollerd/cmd/utils/docs/
 	cp image-service-openapi.yml src/qcontrollerd/cmd/utils/docs/
 	buf generate
+	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./oapi-controller-client.yml src/qcontrollerd/cmd/utils/docs/openapi.yaml
+	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./oapi-image-client.yml image-service-openapi.yml
 
 frontend:
 	cd frontend && yes | yarn install

@@ -228,7 +228,8 @@ cat >${CONFIGDIR}/controller-config.json <<EOF
     "port": ${CONTROLLER_PORT},
     "root": "${ROOTDIR}",
     "remotes": [],
-    "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"}
+    "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"},
+    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}"
 }
 EOF
 

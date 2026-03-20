@@ -12,6 +12,7 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
 	"github.com/q-controller/qcontroller/src/pkg/controller/vm"
 	"github.com/q-controller/qcontroller/src/pkg/events"
+	"github.com/q-controller/qcontroller/src/pkg/images"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -84,7 +85,7 @@ func (s *Server) ListNodes(ctx context.Context, _ *emptypb.Empty) (*servicesv1.L
 	}, nil
 }
 
-func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher) (servicesv1.ControllerServiceServer, error) {
+func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher, localImages images.ImageClient) (servicesv1.ControllerServiceServer, error) {
 	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0755); mkdirErr != nil {
 		return nil, mkdirErr
 	}
@@ -94,7 +95,7 @@ func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events
 		return nil, stateErr
 	}
 
-	manager := vm.CreateManager(settings.Local, settings.Remotes, state, eventPublisher)
+	manager := vm.CreateManager(settings.Local, settings.Remotes, state, eventPublisher, localImages)
 	if manager == nil {
 		return nil, fmt.Errorf("failed to create a manager")
 	}

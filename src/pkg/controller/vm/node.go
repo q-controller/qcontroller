@@ -9,7 +9,7 @@ import (
 
 // NodeManager handles VM operations on a single node.
 // Implemented by localNodeManager (wraps QemuService + local DB)
-// and remoteNodeManager (wraps remote ControllerService).
+// and remoteNodeManager (calls a remote gateway's REST API).
 type NodeManager interface {
 	Endpoint() string
 	Create(ctx context.Context, id, imageId string, cpus, memory, disk uint32, cloudInit *vmv1.CloudInit) error
