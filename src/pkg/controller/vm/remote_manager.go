@@ -90,10 +90,27 @@ func (n *remoteNodeManager) Create(ctx context.Context, id, imageId string,
 	return nil
 }
 
-// ensureImage checks if the remote gateway has the image. If not, it downloads
-// from the local file registry and uploads to the remote gateway.
+// ensureImage checks if the remote gateway has the image with the same content
+// hash. If not (missing or different hash), it downloads from the local file
+// registry and uploads to the remote gateway.
 func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) error {
-	// Check if remote already has the image.
+	// Get local image hash for comparison.
+	localImgs, err := n.localImages.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list local images: %w", err)
+	}
+	var localHash string
+	for _, img := range localImgs {
+		if img.ImageId == imageId {
+			localHash = img.Hash
+			break
+		}
+	}
+	if localHash == "" {
+		return fmt.Errorf("image %s not found locally", imageId)
+	}
+
+	// Check if remote already has the image with the same content hash.
 	listResp, err := n.imageClient.GetV1ImagesWithResponse(ctx)
 	if err != nil {
 		return fmt.Errorf("list remote images: %w", err)
@@ -103,8 +120,8 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 	}
 	if listResp.JSON200 != nil && listResp.JSON200.Images != nil {
 		for _, img := range *listResp.JSON200.Images {
-			if img.ImageId == imageId {
-				return nil // already there
+			if img.ImageId == imageId && img.Hash == localHash {
+				return nil // same content, skip upload
 			}
 		}
 	}

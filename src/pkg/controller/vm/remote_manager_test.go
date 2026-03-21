@@ -50,6 +50,7 @@ func (m *mockProgressReporter) getEvents() []recordedProgress {
 
 type mockLocalImageClient struct {
 	imageData  []byte
+	images     []*imageservice.ImageInfo
 	downloadFn func(ctx context.Context, id, path string) error
 }
 
@@ -67,7 +68,7 @@ func (m *mockLocalImageClient) Download(ctx context.Context, id, path string) er
 func (m *mockLocalImageClient) Remove(_ context.Context, _ string) error { return nil }
 
 func (m *mockLocalImageClient) List(_ context.Context) ([]*imageservice.ImageInfo, error) {
-	return nil, nil
+	return m.images, nil
 }
 
 var _ images.ImageClient = (*mockLocalImageClient)(nil)
@@ -227,7 +228,7 @@ func TestEnsureImage_SkipsWhenImageExists(t *testing.T) {
 		if r.URL.Path == "/v1/images" && r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(ic.ImageListResponse{
-				Images: &[]ic.ImageInfo{{ImageId: "existing-image", Hash: "abc", Size: 100}},
+				Images: &[]ic.ImageInfo{{ImageId: "existing-image", Hash: "abc123", Size: 100}},
 			})
 			return
 		}
@@ -239,14 +240,59 @@ func TestEnsureImage_SkipsWhenImageExists(t *testing.T) {
 	imgClient, _ := ic.NewClientWithResponses(server.URL)
 
 	rm := &remoteNodeManager{
-		name:            "test-node",
-		endpoint:        server.URL,
-		client:          client,
-		imageClient:     imgClient,
+		name:        "test-node",
+		endpoint:    server.URL,
+		client:      client,
+		imageClient: imgClient,
+		localImages: &mockLocalImageClient{
+			images: []*imageservice.ImageInfo{
+				{ImageId: "existing-image", Hash: "abc123", Size: 100},
+			},
+		},
 		eventsPublisher: &mockProgressReporter{},
 	}
 
 	assert.NoError(t, rm.ensureImage(context.Background(), "existing-image"))
+}
+
+func TestEnsureImage_UploadsWhenHashDiffers(t *testing.T) {
+	var uploadReceived bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/images" && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(ic.ImageListResponse{
+				Images: &[]ic.ImageInfo{{ImageId: "my-image", Hash: "old-hash", Size: 100}},
+			})
+		case r.URL.Path == "/v1/images" && r.Method == http.MethodPost:
+			uploadReceived = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client, _ := cc.NewClientWithResponses(server.URL)
+	imgClient, _ := ic.NewClientWithResponses(server.URL)
+
+	rm := &remoteNodeManager{
+		name:        "test-node",
+		endpoint:    server.URL,
+		client:      client,
+		imageClient: imgClient,
+		localImages: &mockLocalImageClient{
+			imageData: []byte("new-content"),
+			images: []*imageservice.ImageInfo{
+				{ImageId: "my-image", Hash: "new-hash", Size: 100},
+			},
+		},
+		eventsPublisher: &mockProgressReporter{},
+	}
+
+	require.NoError(t, rm.ensureImage(context.Background(), "my-image"))
+	assert.True(t, uploadReceived, "expected upload when hash differs")
 }
 
 func TestEnsureImage_UploadsWhenMissing(t *testing.T) {
@@ -286,11 +332,16 @@ func TestEnsureImage_UploadsWhenMissing(t *testing.T) {
 	imgClient, _ := ic.NewClientWithResponses(server.URL)
 
 	rm := &remoteNodeManager{
-		name:            "test-node",
-		endpoint:        server.URL,
-		client:          client,
-		imageClient:     imgClient,
-		localImages:     &mockLocalImageClient{imageData: []byte("fake-image-data")},
+		name:        "test-node",
+		endpoint:    server.URL,
+		client:      client,
+		imageClient: imgClient,
+		localImages: &mockLocalImageClient{
+			imageData: []byte("fake-image-data"),
+			images: []*imageservice.ImageInfo{
+				{ImageId: "new-image", Hash: "local-hash", Size: 15},
+			},
+		},
 		eventsPublisher: &mockProgressReporter{},
 	}
 
@@ -319,6 +370,9 @@ func TestEnsureImage_CancelledContext(t *testing.T) {
 		client:      client,
 		imageClient: imgClient,
 		localImages: &mockLocalImageClient{
+			images: []*imageservice.ImageInfo{
+				{ImageId: "some-image", Hash: "some-hash", Size: 100},
+			},
 			downloadFn: func(ctx context.Context, _, _ string) error {
 				<-ctx.Done()
 				return ctx.Err()
