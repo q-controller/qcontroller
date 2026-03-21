@@ -2,6 +2,8 @@ package protos
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +19,19 @@ import (
 )
 
 const chunkSize = 1024 * 1024 // 1 MB
+
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 type FileRegistry struct {
 	servicesv1.UnimplementedFileRegistryServiceServer
@@ -48,6 +63,18 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 			// Finalize file
 			if closeErr := file.Close(); closeErr != nil {
 				return status.Errorf(codes.Internal, "failed to close file: %v", closeErr)
+			}
+
+			// Compute content hash and skip store if identical image already exists.
+			contentHash, hashErr := hashFile(tmpFilePath)
+			if hashErr != nil {
+				return status.Errorf(codes.Internal, "failed to hash file: %v", hashErr)
+			}
+			if existing, metaErr := f.storage.GetMetadata(fileID); metaErr == nil && existing.Hash == contentHash {
+				slog.Info("Image already exists with same content, skipping store", "image_id", fileID)
+				return stream.SendAndClose(&servicesv1.UploadImageResponse{
+					ImageId: fileID,
+				})
 			}
 
 			tmpFile, reopenErr := os.Open(tmpFilePath)
