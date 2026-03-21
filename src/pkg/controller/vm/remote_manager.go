@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
-	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 )
 
@@ -28,10 +28,10 @@ type remoteNodeManager struct {
 	client          *cc.ClientWithResponses
 	imageClient     *ic.ClientWithResponses
 	localImages     images.ImageClient
-	eventsPublisher *events.Publisher
+	eventsPublisher ProgressReporter
 }
 
-func newRemoteNodeManager(name, endpoint string, localImages images.ImageClient, eventsPublisher *events.Publisher) (NodeManager, error) {
+func newRemoteNodeManager(name, endpoint string, localImages images.ImageClient, eventsPublisher ProgressReporter) (NodeManager, error) {
 	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
 		return nil, fmt.Errorf("remote node %q endpoint must include a scheme (http:// or https://), got: %s", name, endpoint)
 	}
@@ -241,6 +241,11 @@ func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*servicesv
 	return result, nil
 }
 
+// ProgressReporter publishes progress events during long-running operations.
+type ProgressReporter interface {
+	PublishProgress(resource, message string, percent int32) error
+}
+
 // progressWriter wraps a destination io.Writer and publishes progress events
 // as data flows through it. It throttles updates to avoid flooding the event
 // stream — a new event is published only when the percentage changes.
@@ -251,7 +256,7 @@ type progressWriter struct {
 	lastPct   int32
 	resource  string
 	message   string
-	publisher *events.Publisher
+	publisher ProgressReporter
 }
 
 func (pw *progressWriter) Write(p []byte) (int, error) {
@@ -287,8 +292,10 @@ func derefUint64Str(s *string) uint64 {
 	if s == nil {
 		return 0
 	}
-	var v uint64
-	fmt.Sscanf(*s, "%d", &v)
+	v, err := strconv.ParseUint(*s, 10, 64)
+	if err != nil {
+		return 0
+	}
 	return v
 }
 
