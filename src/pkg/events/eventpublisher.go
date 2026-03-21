@@ -30,7 +30,7 @@ func (p *Publisher) VMUpdated(info *v1.Info) error {
 		return nil // No change, skip send
 	}
 	if exists {
-		slog.Info("VM info changed", "vm", info.Name, "state", info.State, "ips", info.GetRuntimeInfo().GetIpaddresses(), "prev_ips", prev.GetRuntimeInfo().GetIpaddresses())
+		slog.Debug("VM info changed", "vm", info.Name, "state", info.State, "ips", info.GetRuntimeInfo().GetIpaddresses(), "prev_ips", prev.GetRuntimeInfo().GetIpaddresses())
 	} else {
 		slog.Info("First VM event", "vm", info.Name, "state", info.State, "ips", info.GetRuntimeInfo().GetIpaddresses())
 	}
