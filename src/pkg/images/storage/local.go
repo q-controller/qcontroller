@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,8 +45,8 @@ func (b *LocalFilesystemBackend) Store(imageID string, data io.Reader) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	hash := utils.Hash(imageID)
-	filePath := filepath.Join(b.root, hash)
+	fileKey := utils.Hash(imageID)
+	filePath := filepath.Join(b.root, fileKey)
 
 	file, err := os.Create(filepath.Clean(filePath))
 	if err != nil {
@@ -54,14 +56,17 @@ func (b *LocalFilesystemBackend) Store(imageID string, data io.Reader) error {
 		_ = file.Close()
 	}()
 
-	size, err := io.Copy(file, data)
+	// Compute SHA256 of file content while writing.
+	hasher := sha256.New()
+	size, err := io.Copy(file, io.TeeReader(data, hasher))
 	if err != nil {
 		return fmt.Errorf("failed to write data: %w", err)
 	}
 
 	metadata := &ImageMetadata{
 		ImageID:    imageID,
-		Hash:       hash,
+		Hash:       hex.EncodeToString(hasher.Sum(nil)),
+		FileKey:    fileKey,
 		Size:       size,
 		UploadedAt: time.Now(),
 	}
@@ -97,7 +102,7 @@ func (b *LocalFilesystemBackend) Retrieve(imageID string) (io.ReadCloser, error)
 		return nil, err
 	}
 
-	filePath := filepath.Join(b.root, metadata.Hash)
+	filePath := filepath.Join(b.root, metadata.FileKey)
 	file, err := os.Open(filepath.Clean(filePath))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -130,9 +135,9 @@ func (b *LocalFilesystemBackend) Remove(imageID string) error {
 		return fmt.Errorf("failed to get metadata: %w", err)
 	}
 
-	if metadata.Hash != "" {
+	if metadata.FileKey != "" {
 		// Remove file
-		filePath := filepath.Join(b.root, metadata.Hash)
+		filePath := filepath.Join(b.root, metadata.FileKey)
 		if err := os.Remove(filepath.Clean(filePath)); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove file: %w", err)
 		}

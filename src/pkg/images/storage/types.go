@@ -17,7 +17,8 @@ type StorageBackend interface {
 
 type ImageMetadata struct {
 	ImageID    string    `json:"image_id"`
-	Hash       string    `json:"hash"`
+	Hash       string    `json:"hash"`     // SHA256 of file content
+	FileKey    string    `json:"file_key"` // SHA256 of imageID, used as filename on disk
 	Size       int64     `json:"size"`
 	UploadedAt time.Time `json:"uploaded_at"`
 }
