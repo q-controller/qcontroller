@@ -1,4 +1,4 @@
-package vm
+package node
 
 import (
 	"context"
@@ -7,10 +7,8 @@ import (
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 )
 
-// NodeManager handles VM operations on a single node.
-// Implemented by localNodeManager (wraps QemuService + local DB)
-// and remoteNodeManager (calls a remote gateway's REST API).
-type NodeManager interface {
+// Manager handles VM operations on a single node.
+type Manager interface {
 	Endpoint() string
 	Create(ctx context.Context, id, imageId string, cpus, memory, disk uint32, cloudInit *vmv1.CloudInit) error
 	Start(ctx context.Context, name string) error

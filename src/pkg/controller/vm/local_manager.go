@@ -12,6 +12,7 @@ import (
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
+	"github.com/q-controller/qcontroller/src/pkg/node"
 	"github.com/q-controller/qemu-client/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -25,7 +26,7 @@ type localNodeManager struct {
 	state    controller.State
 }
 
-func newLocalNodeManager(name, endpoint string, state controller.State) (NodeManager, error) {
+func newLocalNodeManager(name, endpoint string, state controller.State) (node.Manager, error) {
 	nm := &localNodeManager{name: name, endpoint: endpoint, state: state}
 	return nm, nil
 }

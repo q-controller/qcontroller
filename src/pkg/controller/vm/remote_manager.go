@@ -19,6 +19,7 @@ import (
 	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/images"
+	"github.com/q-controller/qcontroller/src/pkg/node"
 )
 
 // remoteNodeManager implements NodeManager by calling a remote gateway's REST API.
@@ -31,7 +32,7 @@ type remoteNodeManager struct {
 	eventsPublisher ProgressReporter
 }
 
-func newRemoteNodeManager(name, endpoint string, localImages images.ImageClient, eventsPublisher ProgressReporter) (NodeManager, error) {
+func newRemoteNodeManager(name, endpoint string, localImages images.ImageClient, eventsPublisher ProgressReporter) (node.Manager, error) {
 	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
 		return nil, fmt.Errorf("remote node %q endpoint must include a scheme (http:// or https://), got: %s", name, endpoint)
 	}
