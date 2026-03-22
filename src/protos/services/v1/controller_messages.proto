@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package services.v1;
+
+import "settings/v1/settings.proto";
+import "vm/statemachine/v1/statemachine.proto";
+import "vm/runtime/v1/runtime.proto";
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+
+message CreateRequest {
+    settings.v1.VM vm = 1;
+    string name = 2;
+    string image = 3;
+    bool start = 4;
+    vm.statemachine.v1.CloudInit cloud_init = 5;
+    string node = 6;  // empty = scheduler picks
+}
+
+message StartRequest {
+    string name = 1;
+}
+
+message StopRequest {
+    string name = 1;
+    bool force = 2;
+}
+
+message VMResponse {
+    string name = 1;
+}
+
+message InfoRequest {
+    string name = 1;
+}
+
+message RemoveRequest {
+    string name = 1;
+}
+
+message Info {
+    string name = 1;
+    settings.v1.VM details = 2;
+    string state = 3;
+    string hwaddr = 4;
+    vm.statemachine.v1.CloudInit cloud_init = 5;
+    vm.runtime.v1.RuntimeInfo runtime_info = 6;
+    string node = 7;
+    string image_id = 8;
+}
+
+message InfoResponse {
+    repeated Info info = 1;
+}
+
+message ListNodesResponse {
+    repeated settings.v1.Node nodes = 1;
+}
