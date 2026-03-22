@@ -14,6 +14,7 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images"
+	"github.com/q-controller/qcontroller/src/pkg/node"
 )
 
 // Manager orchestrates VM operations across local and remote nodes.
@@ -27,7 +28,7 @@ import (
 type Manager struct {
 	mutex     sync.RWMutex
 	localNode string                 // local node name (empty if no local node)
-	nodes     map[string]NodeManager // node name → manager
+	nodes     map[string]node.Manager // node name → manager
 	vmIndex   map[string]string      // VM ID → node name (for routing mutations)
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -36,7 +37,7 @@ type Manager struct {
 }
 
 func newManager(local *settingsv1.Node, remotes []*settingsv1.Node, state controller.State, eventPublisher *events.Publisher, localImages images.ImageClient) (*Manager, error) {
-	nodes := make(map[string]NodeManager)
+	nodes := make(map[string]node.Manager)
 
 	var localName string
 	if local != nil {
@@ -205,7 +206,7 @@ func (m *Manager) qualifyName(node, vmName string) string {
 }
 
 // resolveNode looks up a qualified ID and returns the plain VM name + node manager.
-func (m *Manager) resolveNode(id string) (string, NodeManager, error) {
+func (m *Manager) resolveNode(id string) (string, node.Manager, error) {
 	node, ok := m.vmIndex[id]
 	if !ok {
 		return "", nil, fmt.Errorf("instance %s not found", id)
