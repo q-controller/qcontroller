@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package services.v1;
+
+import "services/v1/controller_messages.proto";
+import "services/v1/fileregistry_messages.proto";
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+
+message VMEvent {
+    enum EventType {
+        EVENT_TYPE_UNSPECIFIED = 0;
+        EVENT_TYPE_UPDATED = 1;
+        EVENT_TYPE_REMOVED = 2;
+    }
+    EventType type = 1;
+    services.v1.Info info = 2;
+}
+
+message ImageEvent {
+    enum EventType {
+        EVENT_TYPE_UNSPECIFIED = 0;
+        EVENT_TYPE_UPLOADED = 1;
+        EVENT_TYPE_REMOVED = 2;
+    }
+    EventType type = 1;
+    services.v1.VMImage image = 2;
+}
+
+message ErrorEvent {
+    string message = 1;
+    string resource = 2;
+}
+
+message ProgressEvent {
+    string resource = 1;  // e.g. "image:ubuntu-22.04"
+    string message = 2;   // e.g. "Pushing image to node2"
+    int32 percent = 3;    // 0-100, -1 if unknown
+}
+
+message Update {
+    int64 timestamp = 2;
+    oneof payload {
+        VMEvent vm_event = 3;
+        ImageEvent image_event = 4;
+        ErrorEvent error_event = 5;
+        ProgressEvent progress_event = 6;
+    }
+}
+
+message PublishRequest {
+    Update update = 1;
+}
+
+message PublishResponse {}
+
+message SubscribeRequest {}
+
+message SubscribeResponse {
+    Update update = 1;
+}

@@ -2,58 +2,10 @@ syntax = "proto3";
 
 package services.v1;
 
-import "settings/v1/settings.proto";
+import "services/v1/process_messages.proto";
 import "google/protobuf/empty.proto";
-import "vm/statemachine/v1/statemachine.proto";
-import "vm/runtime/v1/runtime.proto";
 
 option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
-
-message NetworkConfig {
-    string driver = 1;
-    string mac = 2;
-}
-
-message QemuConfig {
-    string id = 1;
-    string machine = 2;
-    string accelerator = 3;
-    NetworkConfig network = 4;
-    string image_id = 5;
-    vm.statemachine.v1.CloudInit cloud_init = 6;
-    settings.v1.VM hardware = 7;
-}
-
-message QemuServiceStartRequest {
-    QemuConfig config = 1;
-}
-
-message QemuServiceStartResponse {
-}
-
-message QemuServiceStopRequest {
-    string id = 1;
-    bool force = 2;
-}
-
-message QemuServiceInfoRequest {
-    repeated string ids = 1;
-}
-
-message QemuServiceInfoResponse {
-    repeated vm.runtime.v1.RuntimeInfo info = 1;
-}
-
-message QemuServiceListRequest {
-}
-
-message QemuServiceListResponse {
-    repeated string ids = 1;
-}
-
-message QemuServiceRemoveRequest {
-    string id = 1;
-}
 
 service QemuService {
     rpc Start(QemuServiceStartRequest) returns (QemuServiceStartResponse) {}
