@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package services.v1;
+package services.fileregistry.v1;
 
-import "services/v1/fileregistry_messages.proto";
+import "services/fileregistry/v1/messages.proto";
 
-option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1;v1";
 
 service FileRegistryService {
     rpc UploadImage(stream UploadImageRequest) returns (UploadImageResponse) {}

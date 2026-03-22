@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package services.v1;
+package services.controller.v1;
 
 import "settings/v1/settings.proto";
 import "vm/statemachine/v1/statemachine.proto";
 import "vm/runtime/v1/runtime.proto";
 
-option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/controller/v1;v1";
 
 message VMSpec {
     settings.v1.VM vm = 1;

@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package services.v1;
+package services.event.v1;
 
-import "services/v1/event_messages.proto";
+import "services/event/v1/messages.proto";
 
-option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/event/v1;v1";
 
 service EventService {
     rpc Publish(stream PublishRequest) returns (PublishResponse) {}

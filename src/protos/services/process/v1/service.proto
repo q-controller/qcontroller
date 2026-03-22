@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package services.process.v1;
+
+import "services/process/v1/messages.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/process/v1;v1";
+
+service QemuService {
+    rpc Start(StartRequest) returns (StartResponse) {}
+    rpc Stop(StopRequest) returns (google.protobuf.Empty) {}
+    rpc Info(InfoRequest) returns (InfoResponse) {}
+    rpc List(ListRequest) returns (ListResponse) {}
+    rpc Remove(RemoveRequest) returns (google.protobuf.Empty) {}
+}
