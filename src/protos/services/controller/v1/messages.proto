@@ -18,7 +18,6 @@ message CreateRequest {
     VMSpec spec = 1;
     string name = 2;
     bool start = 3;
-    string node = 4;
 }
 
 message StartRequest {
@@ -52,13 +51,8 @@ message Info {
     string name = 1;
     VMSpec spec = 2;
     VMStatus status = 3;
-    string node = 4;
 }
 
 message InfoResponse {
     repeated Info info = 1;
-}
-
-message ListNodesResponse {
-    repeated settings.v1.Node nodes = 1;
 }

@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package services.orchestrator.v1;
+
+import "services/controller/v1/messages.proto";
+import "services/event/v1/messages.proto";
+import "settings/v1/settings.proto";
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1;v1";
+
+message CreateRequest {
+    string node = 1;
+    services.controller.v1.VMSpec spec = 2;
+    string name = 3;
+    bool start = 4;
+}
+
+message StartRequest {
+    string node = 1;
+    string name = 2;
+}
+
+message StopRequest {
+    string node = 1;
+    string name = 2;
+    bool force = 3;
+}
+
+message InfoRequest {
+    string node = 1;
+    string name = 2;
+}
+
+message RemoveRequest {
+    string node = 1;
+    string name = 2;
+}
+
+message Info {
+    string node = 1;
+    services.controller.v1.Info info = 2;
+}
+
+message InfoResponse {
+    repeated Info info = 1;
+}
+
+message Event {
+    string node = 1;
+    services.event.v1.Update update = 2;
+}
+
+message ListNodesResponse {
+    repeated settings.v1.Node nodes = 1;
+}
