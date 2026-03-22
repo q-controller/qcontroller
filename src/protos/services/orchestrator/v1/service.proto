@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package services.orchestrator.v1;
+
+import "services/orchestrator/v1/messages.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1;v1";
+
+service OrchestratorService {
+    rpc Create(CreateRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/nodes/{node}/instances"
+            body: "*"
+        };
+    }
+
+    rpc Start(StartRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/nodes/{node}/instances/{name}/start"
+            body: "*"
+        };
+    }
+
+    rpc Stop(StopRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/nodes/{node}/instances/{name}/stop"
+            body: "*"
+        };
+    }
+
+    rpc Remove(RemoveRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            delete: "/v1/nodes/{node}/instances/{name}"
+        };
+    }
+
+    rpc Info(InfoRequest) returns (InfoResponse) {
+        option (google.api.http) = {
+            get: "/v1/nodes/{node}/instances/{name}"
+        };
+    }
+
+    rpc ListNodes(google.protobuf.Empty) returns (ListNodesResponse) {
+        option (google.api.http) = {
+            get: "/v1/nodes"
+        };
+    }
+}

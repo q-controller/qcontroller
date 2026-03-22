@@ -83,14 +83,13 @@ message MacosSettings {
 message Node {
     string name = 1;
     string endpoint = 2;
+    string file_registry_endpoint = 3;
 }
 
 message ControllerConfig {
     uint32 port = 1;
     string root = 2;
     Node local = 3;
-    repeated Node remotes = 4;
-    string file_registry_endpoint = 5;
 }
 
 message QemuConfig {
@@ -106,11 +105,12 @@ message QemuConfig {
     string file_registry_endpoint = 6;
 }
 
-message GatewayConfig {
+message OrchestratorConfig {
     uint32 port = 1;
-    string controller_endpoint = 2;
-    bool expose_swagger_ui = 3;
+    uint32 grpc_port = 2;
+    repeated Node nodes = 3;
     string file_registry_endpoint = 4;
+    bool expose_swagger_ui = 5;
 }
 
 message FileRegistryConfig {
