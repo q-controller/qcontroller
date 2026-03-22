@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package services.v1;
+package services.event.v1;
 
-import "services/v1/controller_messages.proto";
-import "services/v1/fileregistry_messages.proto";
+import "services/controller/v1/messages.proto";
+import "services/fileregistry/v1/messages.proto";
 
-option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/event/v1;v1";
 
 message VMEvent {
     enum EventType {
@@ -14,7 +14,7 @@ message VMEvent {
         EVENT_TYPE_REMOVED = 2;
     }
     EventType type = 1;
-    services.v1.Info info = 2;
+    services.controller.v1.Info info = 2;
 }
 
 message ImageEvent {
@@ -24,7 +24,7 @@ message ImageEvent {
         EVENT_TYPE_REMOVED = 2;
     }
     EventType type = 1;
-    services.v1.VMImage image = 2;
+    services.fileregistry.v1.VMImage image = 2;
 }
 
 message ErrorEvent {

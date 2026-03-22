@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package services.v1;
+package services.process.v1;
 
 import "settings/v1/settings.proto";
 import "vm/statemachine/v1/statemachine.proto";
 import "vm/runtime/v1/runtime.proto";
 
-option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/process/v1;v1";
 
 message NetworkConfig {
     string driver = 1;
@@ -23,33 +23,33 @@ message QemuConfig {
     settings.v1.VM hardware = 7;
 }
 
-message QemuServiceStartRequest {
+message StartRequest {
     QemuConfig config = 1;
 }
 
-message QemuServiceStartResponse {
+message StartResponse {
 }
 
-message QemuServiceStopRequest {
+message StopRequest {
     string id = 1;
     bool force = 2;
 }
 
-message QemuServiceInfoRequest {
+message InfoRequest {
     repeated string ids = 1;
 }
 
-message QemuServiceInfoResponse {
+message InfoResponse {
     repeated vm.runtime.v1.RuntimeInfo info = 1;
 }
 
-message QemuServiceListRequest {
+message ListRequest {
 }
 
-message QemuServiceListResponse {
+message ListResponse {
     repeated string ids = 1;
 }
 
-message QemuServiceRemoveRequest {
+message RemoveRequest {
     string id = 1;
 }

@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package services.v1;
+package services.controller.v1;
 
-import "services/v1/controller_messages.proto";
+import "services/controller/v1/messages.proto";
 import "google/protobuf/empty.proto";
 import "google/api/annotations.proto";
 
-option go_package = "github.com/q-controller/qcontroller/src/generated/services/v1;v1";
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/controller/v1;v1";
 
 service ControllerService {
     rpc Create(CreateRequest) returns (google.protobuf.Empty) {
