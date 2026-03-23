@@ -4,115 +4,62 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
-	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/events"
-	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/node"
 )
 
-// Manager orchestrates VM operations across local and remote nodes.
+// Manager manages VMs on the local node.
 //
-// State is updated asynchronously:
-//   - Local node: polling loop queries QemuService and publishes events
-//   - Remote nodes: subscribes to each node's EventService
-//
-// Info() reads from the EventPublisher's cache — zero network calls.
-// Mutations (Create/Start/Stop/Remove) call the target node directly.
+// State is updated via a polling loop that queries QemuService.
+// Info() reads from the EventPublisher's cache.
+// Mutations go directly to the local QemuService.
 type Manager struct {
-	mutex     sync.RWMutex
-	localNode string                 // local node name (empty if no local node)
-	nodes     map[string]node.Manager // node name → manager
-	vmIndex   map[string]string      // VM ID → node name (for routing mutations)
-	ctx       context.Context
-	cancel    context.CancelFunc
+	nm     node.Manager
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	eventsPublisher *events.Publisher
 }
 
-func newManager(local *settingsv1.Node, remotes []*settingsv1.Node, state controller.State, eventPublisher *events.Publisher, localImages images.ImageClient) (*Manager, error) {
-	nodes := make(map[string]node.Manager)
+func newManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher) (*Manager, error) {
+	if local == nil {
+		return nil, fmt.Errorf("local node must be configured")
+	}
 
-	var localName string
-	if local != nil {
-		nm, nmErr := newLocalNodeManager(local.Name, local.Endpoint, state)
-		if nmErr != nil {
-			return nil, nmErr
-		}
-		nodes[local.Name] = nm
-		localName = local.Name
-	}
-	if len(remotes) > 0 && localImages == nil {
-		return nil, fmt.Errorf("file_registry_endpoint must be configured when remote nodes are used")
-	}
-	for _, remote := range remotes {
-		nm, nmErr := newRemoteNodeManager(remote.Name, remote.Endpoint, localImages, eventPublisher)
-		if nmErr != nil {
-			return nil, nmErr
-		}
-		nodes[remote.Name] = nm
+	nm, nmErr := newLocalNodeManager(local.Name, local.Endpoint, state)
+	if nmErr != nil {
+		return nil, nmErr
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	manager := Manager{
-		localNode:       localName,
-		nodes:           nodes,
-		vmIndex:         make(map[string]string),
+	manager := &Manager{
+		nm:              nm,
 		ctx:             ctx,
 		cancel:          cancel,
 		eventsPublisher: eventPublisher,
 	}
 
-	// Local node: poll QemuService (local, fast).
-	if local != nil {
-		manager.startLocalPollingLoop()
-	}
+	manager.startPollingLoop()
 
-	// Remote nodes: subscribe to each node's EventService.
-	for _, remote := range remotes {
-		go manager.subscribeToNode(remote.Name, remote.Endpoint)
-	}
-
-	return &manager, nil
+	return manager, nil
 }
 
 func (m *Manager) Create(ctx context.Context, id, imageId string,
-	cpus uint32, memory, disk uint32, cloudInit *vmv1.CloudInit, node string) (string, error) {
-	m.mutex.RLock()
-	if node == "" {
-		if m.localNode == "" {
-			m.mutex.RUnlock()
-			return "", fmt.Errorf("no local node configured")
-		}
-		node = m.localNode
-	}
-	nm, ok := m.nodes[node]
-	m.mutex.RUnlock()
-	if !ok {
-		return "", fmt.Errorf("node %s not found", node)
-	}
-
-	if err := nm.Create(ctx, id, imageId, cpus, memory, disk, cloudInit); err != nil {
+	cpus uint32, memory, disk uint32, cloudInit *vmv1.CloudInit) (string, error) {
+	if err := m.nm.Create(ctx, id, imageId, cpus, memory, disk, cloudInit); err != nil {
 		return "", err
 	}
 
-	qualifiedName := m.qualifyName(node, id)
-
-	m.mutex.Lock()
-	m.vmIndex[qualifiedName] = node
-	m.mutex.Unlock()
-
-	// Seed the cache so the VM appears in the UI immediately after creation.
 	_ = m.eventsPublisher.VMUpdated(&controllerv1.Info{
-		Name: qualifiedName,
+		Name: id,
 		Spec: &controllerv1.VMSpec{
 			Image: imageId,
 			Vm:    &settingsv1.VM{Cpus: cpus, Memory: memory, Disk: disk},
@@ -120,56 +67,29 @@ func (m *Manager) Create(ctx context.Context, id, imageId string,
 		Status: &controllerv1.VMStatus{
 			State: vmv1.State_STATE_STOPPED.String(),
 		},
-		Node: node,
 	})
 
-	return qualifiedName, nil
+	return id, nil
 }
 
 func (m *Manager) Start(_ context.Context, id string) error {
-	m.mutex.RLock()
-	vmName, nm, err := m.resolveNode(id)
-	m.mutex.RUnlock()
-	if err != nil {
-		return err
-	}
-
 	go func() {
-		if err := nm.Start(m.ctx, vmName); err != nil {
+		if err := m.nm.Start(m.ctx, id); err != nil {
 			slog.Error("Start failed", "id", id, "error", err)
 			_ = m.eventsPublisher.PublishError(fmt.Sprintf("failed to start: %v", err), id)
 		}
 	}()
-
 	return nil
 }
 
 func (m *Manager) Stop(ctx context.Context, id string, force bool) error {
-	m.mutex.RLock()
-	vmName, nm, err := m.resolveNode(id)
-	m.mutex.RUnlock()
-	if err != nil {
-		return err
-	}
-
-	return nm.Stop(ctx, vmName, force)
+	return m.nm.Stop(ctx, id, force)
 }
 
 func (m *Manager) Remove(ctx context.Context, id string) error {
-	m.mutex.RLock()
-	vmName, nm, err := m.resolveNode(id)
-	m.mutex.RUnlock()
-	if err != nil {
-		return err
-	}
-
-	if removeErr := nm.Remove(ctx, vmName); removeErr != nil {
+	if removeErr := m.nm.Remove(ctx, id); removeErr != nil {
 		return removeErr
 	}
-
-	m.mutex.Lock()
-	delete(m.vmIndex, id)
-	m.mutex.Unlock()
 
 	if eventErr := m.eventsPublisher.VMRemoved(id); eventErr != nil {
 		slog.Warn("Failed to publish VM removal event", "id", id, "error", eventErr)
@@ -178,7 +98,6 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	return nil
 }
 
-// Info reads from the EventPublisher's cache. No network calls.
 func (m *Manager) Info(_ context.Context, id string) ([]*controllerv1.Info, error) {
 	if id != "" {
 		info := m.eventsPublisher.Get(id)
@@ -190,50 +109,16 @@ func (m *Manager) Info(_ context.Context, id string) ([]*controllerv1.Info, erro
 	return m.eventsPublisher.GetAll(), nil
 }
 
-func (m *Manager) ListNodes() []*settingsv1.Node {
-	out := make([]*settingsv1.Node, 0, len(m.nodes))
-	for name, nm := range m.nodes {
-		out = append(out, &settingsv1.Node{Name: name, Endpoint: nm.Endpoint()})
-	}
-	return out
-}
-
 func (m *Manager) Close() {
 	m.cancel()
-}
-
-// qualifyName returns "node:vmName" for remote nodes, plain "vmName" for local.
-func (m *Manager) qualifyName(node, vmName string) string {
-	if node == m.localNode {
-		return vmName
-	}
-	return node + ":" + vmName
-}
-
-// resolveNode looks up a qualified ID and returns the plain VM name + node manager.
-func (m *Manager) resolveNode(id string) (string, node.Manager, error) {
-	node, ok := m.vmIndex[id]
-	if !ok {
-		return "", nil, fmt.Errorf("instance %s not found", id)
-	}
-	nm, nmOk := m.nodes[node]
-	if !nmOk {
-		return "", nil, fmt.Errorf("node %s not found", node)
-	}
-	// Extract plain VM name: strip "node:" prefix for remote VMs.
-	vmName := id
-	if prefix := node + ":"; strings.HasPrefix(id, prefix) {
-		vmName = id[len(prefix):]
-	}
-	return vmName, nm, nil
 }
 
 var singleton *Manager
 var once sync.Once
 
-func CreateManager(local *settingsv1.Node, remotes []*settingsv1.Node, state controller.State, eventPublisher *events.Publisher, localImages images.ImageClient) *Manager {
+func CreateManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher) *Manager {
 	once.Do(func() {
-		mgr, mgrErr := newManager(local, remotes, state, eventPublisher, localImages)
+		mgr, mgrErr := newManager(local, state, eventPublisher)
 		if mgrErr != nil {
 			slog.Error("failed to create VM manager", "error", mgrErr)
 		}
@@ -242,13 +127,11 @@ func CreateManager(local *settingsv1.Node, remotes []*settingsv1.Node, state con
 	return singleton
 }
 
-// --- Local node: polling loop ---
-
 const localPollInterval = 3 * time.Second
 
-func (m *Manager) startLocalPollingLoop() {
+func (m *Manager) startPollingLoop() {
 	go func() {
-		m.pollLocalNode()
+		m.poll()
 
 		ticker := time.NewTicker(localPollInterval)
 		defer ticker.Stop()
@@ -257,176 +140,36 @@ func (m *Manager) startLocalPollingLoop() {
 			case <-m.ctx.Done():
 				return
 			case <-ticker.C:
-				m.pollLocalNode()
+				m.poll()
 			}
 		}
 	}()
 }
 
-func (m *Manager) pollLocalNode() {
-	m.mutex.RLock()
-	nm, ok := m.nodes[m.localNode]
-	m.mutex.RUnlock()
-	if !ok {
-		return
-	}
-
-	infos, err := nm.Info(m.ctx, "")
+func (m *Manager) poll() {
+	infos, err := m.nm.Info(m.ctx, "")
 	if err != nil {
-		slog.Debug("Failed to poll local node", "node", m.localNode, "error", err)
+		slog.Debug("Failed to poll local node", "error", err)
 		return
 	}
 
-	newLocal := make(map[string]bool, len(infos))
+	current := make(map[string]bool, len(infos))
 	for _, info := range infos {
-		newLocal[info.Name] = true
+		current[info.Name] = true
 	}
 
-	m.mutex.Lock()
-	for _, info := range infos {
-		m.vmIndex[info.Name] = m.localNode
-	}
-	// Detect local VMs that disappeared.
-	for vmName, node := range m.vmIndex {
-		if node == m.localNode && !newLocal[vmName] {
-			delete(m.vmIndex, vmName)
-			if eventErr := m.eventsPublisher.VMRemoved(vmName); eventErr != nil {
-				slog.Warn("Failed to publish VM removal event", "id", vmName, "error", eventErr)
+	// Detect VMs that disappeared.
+	for _, cached := range m.eventsPublisher.GetAll() {
+		if !current[cached.Name] {
+			if eventErr := m.eventsPublisher.VMRemoved(cached.Name); eventErr != nil {
+				slog.Warn("Failed to publish VM removal event", "id", cached.Name, "error", eventErr)
 			}
 		}
 	}
-	m.mutex.Unlock()
 
 	for _, info := range infos {
 		if eventErr := m.eventsPublisher.VMUpdated(info); eventErr != nil {
 			slog.Warn("Failed to publish VM info event", "id", info.Name, "error", eventErr)
-		}
-	}
-}
-
-// --- Remote nodes: event subscriptions ---
-
-const subscribeRetryInterval = 2 * time.Second
-
-func (m *Manager) subscribeToNode(nodeName, endpoint string) {
-	for {
-		select {
-		case <-m.ctx.Done():
-			return
-		default:
-		}
-
-		err := m.runSubscription(nodeName, endpoint)
-		if err != nil {
-			slog.Warn("Event subscription lost, reconnecting", "node", nodeName, "error", err)
-		}
-
-		select {
-		case <-m.ctx.Done():
-			return
-		case <-time.After(subscribeRetryInterval):
-		}
-	}
-}
-
-func (m *Manager) runSubscription(nodeName, endpoint string) error {
-	nm, ok := m.nodes[nodeName]
-	if !ok {
-		return fmt.Errorf("node %s not found", nodeName)
-	}
-
-	// Seed initial state via REST before subscribing to events.
-	// On reconnect, also reconcile: remove VMs that disappeared while disconnected.
-	infos, infoErr := nm.Info(m.ctx, "")
-	if infoErr != nil {
-		return fmt.Errorf("initial info %s: %w", nodeName, infoErr)
-	}
-
-	currentVMs := make(map[string]bool, len(infos))
-	for _, info := range infos {
-		currentVMs[m.qualifyName(nodeName, info.Name)] = true
-	}
-
-	m.mutex.Lock()
-	for vmName, owner := range m.vmIndex {
-		if owner == nodeName && !currentVMs[vmName] {
-			delete(m.vmIndex, vmName)
-			if eventErr := m.eventsPublisher.VMRemoved(vmName); eventErr != nil {
-				slog.Warn("Failed to remove stale VM on reconnect", "id", vmName, "error", eventErr)
-			}
-		}
-	}
-	for _, info := range infos {
-		m.vmIndex[m.qualifyName(nodeName, info.Name)] = nodeName
-	}
-	m.mutex.Unlock()
-
-	for _, info := range infos {
-		info.Name = m.qualifyName(nodeName, info.Name)
-		info.Node = nodeName
-		if eventErr := m.eventsPublisher.VMUpdated(info); eventErr != nil {
-			slog.Warn("Failed to publish initial VM info", "id", info.Name, "error", eventErr)
-		}
-	}
-
-	// Subscribe to event stream via WebSocket.
-	sub, err := dialWebSocket(m.ctx, endpoint)
-	if err != nil {
-		return fmt.Errorf("subscribe %s: %w", nodeName, err)
-	}
-	defer func() { _ = sub.Close() }()
-
-	// Close WebSocket when context is cancelled.
-	go func() {
-		<-m.ctx.Done()
-		_ = sub.Close()
-	}()
-
-	slog.Info("Subscribed to node events via WebSocket", "node", nodeName, "endpoint", endpoint)
-
-	for {
-		resp, recvErr := sub.Recv()
-		if recvErr != nil {
-			return fmt.Errorf("recv %s: %w", nodeName, recvErr)
-		}
-
-		update := resp.GetUpdate()
-		if update == nil {
-			continue
-		}
-
-		vmEvent := update.GetVmEvent()
-		if vmEvent == nil {
-			continue
-		}
-
-		info := vmEvent.GetInfo()
-		if info == nil {
-			continue
-		}
-
-		qualifiedName := m.qualifyName(nodeName, info.Name)
-
-		switch vmEvent.Type {
-		case eventv1.VMEvent_EVENT_TYPE_UPDATED:
-			m.mutex.Lock()
-			m.vmIndex[qualifiedName] = nodeName
-			m.mutex.Unlock()
-
-			info.Name = qualifiedName
-			info.Node = nodeName
-			if eventErr := m.eventsPublisher.VMUpdated(info); eventErr != nil {
-				slog.Warn("Failed to forward VM event", "id", qualifiedName, "error", eventErr)
-			}
-
-		case eventv1.VMEvent_EVENT_TYPE_REMOVED:
-			m.mutex.Lock()
-			delete(m.vmIndex, qualifiedName)
-			m.mutex.Unlock()
-
-			if eventErr := m.eventsPublisher.VMRemoved(qualifiedName); eventErr != nil {
-				slog.Warn("Failed to forward VM removal event", "id", qualifiedName, "error", eventErr)
-			}
 		}
 	}
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
 	"github.com/q-controller/qcontroller/src/pkg/controller/vm"
 	"github.com/q-controller/qcontroller/src/pkg/events"
-	"github.com/q-controller/qcontroller/src/pkg/images"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -36,7 +35,7 @@ func (s *Server) Start(ctx context.Context, request *controllerv1.StartRequest) 
 func (s *Server) Create(ctx context.Context, request *controllerv1.CreateRequest) (*emptypb.Empty, error) {
 	qualifiedName, createErr := s.manager.Create(ctx, request.Name, request.Spec.Image,
 		request.Spec.Vm.Cpus, request.Spec.Vm.Memory,
-		request.Spec.Vm.Disk, request.Spec.CloudInit, request.Node)
+		request.Spec.Vm.Disk, request.Spec.CloudInit)
 	if createErr != nil {
 		return nil, status.Errorf(codes.Internal, "method Launch failed: %v", createErr)
 	}
@@ -79,13 +78,7 @@ func (s *Server) Info(ctx context.Context, request *controllerv1.InfoRequest) (*
 	}, nil
 }
 
-func (s *Server) ListNodes(ctx context.Context, _ *emptypb.Empty) (*controllerv1.ListNodesResponse, error) {
-	return &controllerv1.ListNodesResponse{
-		Nodes: s.manager.ListNodes(),
-	}, nil
-}
-
-func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher, localImages images.ImageClient) (controllerv1.ControllerServiceServer, error) {
+func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher) (controllerv1.ControllerServiceServer, error) {
 	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0755); mkdirErr != nil {
 		return nil, mkdirErr
 	}
@@ -95,7 +88,7 @@ func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events
 		return nil, stateErr
 	}
 
-	manager := vm.CreateManager(settings.Local, settings.Remotes, state, eventPublisher, localImages)
+	manager := vm.CreateManager(settings.Local, state, eventPublisher)
 	if manager == nil {
 		return nil, fmt.Errorf("failed to create a manager")
 	}

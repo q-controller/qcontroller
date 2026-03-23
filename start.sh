@@ -14,7 +14,8 @@ END=192.168.71.254/24
 MACOS_MODE=MODE_SHARED
 CONTROLLER_PORT=8009
 QEMU_PORT=8008
-GATEWAY_PORT=8080
+ORCHESTRATOR_HTTP_PORT=8080
+ORCHESTRATOR_GRPC_PORT=8081
 FILEREGISTRY_PORT=8010
 REGISTRY_ADDRESS=""
 QCONTROLLERD=""
@@ -227,9 +228,7 @@ cat >${CONFIGDIR}/controller-config.json <<EOF
 {
     "port": ${CONTROLLER_PORT},
     "root": "${ROOTDIR}",
-    "remotes": [],
-    "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"},
-    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}"
+    "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"}
 }
 EOF
 
@@ -244,10 +243,13 @@ cat >${CONFIGDIR}/fileregistry-config.json <<EOF
 }
 EOF
 
-cat >${CONFIGDIR}/gateway-config.json <<EOF
+cat >${CONFIGDIR}/orchestrator-config.json <<EOF
 {
-    "port": ${GATEWAY_PORT},
-    "controllerEndpoint": "localhost:${CONTROLLER_PORT}",
+    "port": ${ORCHESTRATOR_HTTP_PORT},
+    "grpcPort": ${ORCHESTRATOR_GRPC_PORT},
+    "nodes": [
+        {"name": "local", "endpoint": "localhost:${CONTROLLER_PORT}", "fileRegistryEndpoint": "${REGISTRY_ADDRESS}"}
+    ],
     "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
     "exposeSwaggerUi": true
 }
@@ -270,10 +272,12 @@ pids+=($!)
 # Wait until qemu is ready
 sleep 1
 
-${QCONTROLLERD} gateway -c ${CONFIGDIR}/gateway-config.json >${LOGDIR}/gateway.out 2>${LOGDIR}/gateway.err &
+touch ${LOGDIR}/orchestrator.out
+touch ${LOGDIR}/orchestrator.err
+${QCONTROLLERD} orchestrator -c ${CONFIGDIR}/orchestrator-config.json >${LOGDIR}/orchestrator.out 2>${LOGDIR}/orchestrator.err &
 pids+=($!)
 
-# Wait until gateway is ready
+# Wait until orchestrator (EventService) is ready
 sleep 1
 
 ${QCONTROLLERD} controller -c ${CONFIGDIR}/controller-config.json >${LOGDIR}/controller.out 2>${LOGDIR}/controller.err &
