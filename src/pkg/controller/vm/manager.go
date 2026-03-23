@@ -111,11 +111,15 @@ func (m *Manager) Create(ctx context.Context, id, imageId string,
 
 	// Seed the cache so the VM appears in the UI immediately after creation.
 	_ = m.eventsPublisher.VMUpdated(&servicesv1.Info{
-		Name:    qualifiedName,
-		State:   vmv1.State_STATE_STOPPED.String(),
-		ImageId: imageId,
-		Node:    node,
-		Details: &settingsv1.VM{Cpus: cpus, Memory: memory, Disk: disk},
+		Name: qualifiedName,
+		Spec: &servicesv1.VMSpec{
+			Image: imageId,
+			Vm:    &settingsv1.VM{Cpus: cpus, Memory: memory, Disk: disk},
+		},
+		Status: &servicesv1.VMStatus{
+			State: vmv1.State_STATE_STOPPED.String(),
+		},
+		Node: node,
 	})
 
 	return qualifiedName, nil

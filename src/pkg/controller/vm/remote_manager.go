@@ -321,47 +321,57 @@ func derefUint64Str(s *string) uint64 {
 
 func oapi2ProtoInfo(src *cc.ServicesV1Info) *servicesv1.Info {
 	info := &servicesv1.Info{
-		Name:    derefStr(src.Name),
-		State:   derefStr(src.State),
-		Hwaddr:  derefStr(src.Hwaddr),
-		Node:    derefStr(src.Node),
-		ImageId: derefStr(src.ImageId),
+		Name: derefStr(src.Name),
+		Node: derefStr(src.Node),
 	}
-	if src.Details != nil {
-		info.Details = &settingsv1.VM{
-			Cpus:   derefUint32(src.Details.Cpus),
-			Memory: derefUint32(src.Details.Memory),
-			Disk:   derefUint32(src.Details.Disk),
+	if src.Spec != nil {
+		spec := &servicesv1.VMSpec{
+			Image: derefStr(src.Spec.Image),
 		}
-	}
-	if src.CloudInit != nil {
-		info.CloudInit = &vmv1.CloudInit{
-			Userdata:      derefStr(src.CloudInit.Userdata),
-			NetworkConfig: derefStr(src.CloudInit.NetworkConfig),
-		}
-	}
-	if src.RuntimeInfo != nil {
-		ri := &runtimev1.RuntimeInfo{
-			Name: derefStr(src.RuntimeInfo.Name),
-		}
-		if src.RuntimeInfo.Ipaddresses != nil {
-			ri.Ipaddresses = *src.RuntimeInfo.Ipaddresses
-		}
-		if src.RuntimeInfo.MemoryStats != nil {
-			ri.MemoryStats = &settingsv1.MemoryStats{
-				TotalMemory:     derefUint64Str(src.RuntimeInfo.MemoryStats.TotalMemory),
-				AvailableMemory: derefUint64Str(src.RuntimeInfo.MemoryStats.AvailableMemory),
-				FreeMemory:      derefUint64Str(src.RuntimeInfo.MemoryStats.FreeMemory),
-				DiskCaches:      derefUint64Str(src.RuntimeInfo.MemoryStats.DiskCaches),
+		if src.Spec.Vm != nil {
+			spec.Vm = &settingsv1.VM{
+				Cpus:   derefUint32(src.Spec.Vm.Cpus),
+				Memory: derefUint32(src.Spec.Vm.Memory),
+				Disk:   derefUint32(src.Spec.Vm.Disk),
 			}
 		}
-		if src.RuntimeInfo.DiskStats != nil {
-			ri.DiskStats = &settingsv1.DiskStats{
-				TotalBytes: derefUint64Str(src.RuntimeInfo.DiskStats.TotalBytes),
-				UsedBytes:  derefUint64Str(src.RuntimeInfo.DiskStats.UsedBytes),
+		if src.Spec.CloudInit != nil {
+			spec.CloudInit = &vmv1.CloudInit{
+				Userdata:      derefStr(src.Spec.CloudInit.Userdata),
+				NetworkConfig: derefStr(src.Spec.CloudInit.NetworkConfig),
 			}
 		}
-		info.RuntimeInfo = ri
+		info.Spec = spec
+	}
+	if src.Status != nil {
+		status := &servicesv1.VMStatus{
+			State:  derefStr(src.Status.State),
+			Hwaddr: derefStr(src.Status.Hwaddr),
+		}
+		if src.Status.RuntimeInfo != nil {
+			ri := &runtimev1.RuntimeInfo{
+				Name: derefStr(src.Status.RuntimeInfo.Name),
+			}
+			if src.Status.RuntimeInfo.Ipaddresses != nil {
+				ri.Ipaddresses = *src.Status.RuntimeInfo.Ipaddresses
+			}
+			if src.Status.RuntimeInfo.MemoryStats != nil {
+				ri.MemoryStats = &settingsv1.MemoryStats{
+					TotalMemory:     derefUint64Str(src.Status.RuntimeInfo.MemoryStats.TotalMemory),
+					AvailableMemory: derefUint64Str(src.Status.RuntimeInfo.MemoryStats.AvailableMemory),
+					FreeMemory:      derefUint64Str(src.Status.RuntimeInfo.MemoryStats.FreeMemory),
+					DiskCaches:      derefUint64Str(src.Status.RuntimeInfo.MemoryStats.DiskCaches),
+				}
+			}
+			if src.Status.RuntimeInfo.DiskStats != nil {
+				ri.DiskStats = &settingsv1.DiskStats{
+					TotalBytes: derefUint64Str(src.Status.RuntimeInfo.DiskStats.TotalBytes),
+					UsedBytes:  derefUint64Str(src.Status.RuntimeInfo.DiskStats.UsedBytes),
+				}
+			}
+			status.RuntimeInfo = ri
+		}
+		info.Status = status
 	}
 	return info
 }
