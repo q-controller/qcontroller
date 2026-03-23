@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
 	"github.com/q-controller/qcontroller/src/pkg/controller/vm"
@@ -19,12 +19,12 @@ import (
 )
 
 type Server struct {
-	servicesv1.UnimplementedControllerServiceServer
+	controllerv1.UnimplementedControllerServiceServer
 	Config  *settingsv1.ControllerConfig
 	manager *vm.Manager
 }
 
-func (s *Server) Start(ctx context.Context, request *servicesv1.StartRequest) (*emptypb.Empty, error) {
+func (s *Server) Start(ctx context.Context, request *controllerv1.StartRequest) (*emptypb.Empty, error) {
 	if startErr := s.manager.Start(ctx, request.Name); startErr != nil {
 		slog.Error("failed to start an instance", "error", startErr)
 		return nil, status.Errorf(codes.Unknown, "failed to start a VM instance")
@@ -33,7 +33,7 @@ func (s *Server) Start(ctx context.Context, request *servicesv1.StartRequest) (*
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Create(ctx context.Context, request *servicesv1.CreateRequest) (*emptypb.Empty, error) {
+func (s *Server) Create(ctx context.Context, request *controllerv1.CreateRequest) (*emptypb.Empty, error) {
 	qualifiedName, createErr := s.manager.Create(ctx, request.Name, request.Spec.Image,
 		request.Spec.Vm.Cpus, request.Spec.Vm.Memory,
 		request.Spec.Vm.Disk, request.Spec.CloudInit, request.Node)
@@ -50,7 +50,7 @@ func (s *Server) Create(ctx context.Context, request *servicesv1.CreateRequest) 
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Stop(ctx context.Context, request *servicesv1.StopRequest) (*emptypb.Empty, error) {
+func (s *Server) Stop(ctx context.Context, request *controllerv1.StopRequest) (*emptypb.Empty, error) {
 	if stopErr := s.manager.Stop(ctx, request.Name, request.Force); stopErr != nil {
 		slog.Error("failed to stop an instance", "error", stopErr)
 		return nil, status.Errorf(codes.Unknown, "failed to stop a VM instance")
@@ -59,7 +59,7 @@ func (s *Server) Stop(ctx context.Context, request *servicesv1.StopRequest) (*em
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Remove(ctx context.Context, req *servicesv1.RemoveRequest) (*emptypb.Empty, error) {
+func (s *Server) Remove(ctx context.Context, req *controllerv1.RemoveRequest) (*emptypb.Empty, error) {
 	if removeErr := s.manager.Remove(ctx, req.Name); removeErr != nil {
 		slog.Error("failed to remove an instance", "error", removeErr)
 		return nil, status.Errorf(codes.Unknown, "failed to remove a VM instance")
@@ -68,24 +68,24 @@ func (s *Server) Remove(ctx context.Context, req *servicesv1.RemoveRequest) (*em
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Info(ctx context.Context, request *servicesv1.InfoRequest) (*servicesv1.InfoResponse, error) {
+func (s *Server) Info(ctx context.Context, request *controllerv1.InfoRequest) (*controllerv1.InfoResponse, error) {
 	info, infoErr := s.manager.Info(ctx, request.Name)
 	if infoErr != nil {
 		return nil, status.Errorf(codes.Internal, "failed to retrieve info")
 	}
 
-	return &servicesv1.InfoResponse{
+	return &controllerv1.InfoResponse{
 		Info: info,
 	}, nil
 }
 
-func (s *Server) ListNodes(ctx context.Context, _ *emptypb.Empty) (*servicesv1.ListNodesResponse, error) {
-	return &servicesv1.ListNodesResponse{
+func (s *Server) ListNodes(ctx context.Context, _ *emptypb.Empty) (*controllerv1.ListNodesResponse, error) {
+	return &controllerv1.ListNodesResponse{
 		Nodes: s.manager.ListNodes(),
 	}, nil
 }
 
-func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher, localImages images.ImageClient) (servicesv1.ControllerServiceServer, error) {
+func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher, localImages images.ImageClient) (controllerv1.ControllerServiceServer, error) {
 	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0755); mkdirErr != nil {
 		return nil, mkdirErr
 	}

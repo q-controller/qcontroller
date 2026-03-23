@@ -14,7 +14,7 @@ import (
 	"github.com/q-controller/qapi-client/src/client"
 	"github.com/q-controller/qapi-client/src/monitor"
 	"github.com/q-controller/qcontroller/src/generated/qapi"
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
 	"github.com/q-controller/qcontroller/src/pkg/images"
@@ -30,7 +30,7 @@ import (
 var ErrInstanceNotRunning = errors.New("instance not running")
 
 type QemuServer struct {
-	servicesv1.UnimplementedQemuServiceServer
+	processv1.UnimplementedQemuServiceServer
 
 	config               *settingsv1.QemuConfig
 	nm                   network.NetworkManager
@@ -164,7 +164,7 @@ func (q *QemuServer) instanceDir(id string) string {
 }
 
 func (q *QemuServer) Start(ctx context.Context,
-	req *servicesv1.QemuServiceStartRequest) (*servicesv1.QemuServiceStartResponse, error) {
+	req *processv1.StartRequest) (*processv1.StartResponse, error) {
 	id := req.Config.Id
 
 	q.startingMu.Lock()
@@ -248,11 +248,11 @@ func (q *QemuServer) Start(ctx context.Context,
 		Id:       id,
 	}
 
-	return &servicesv1.QemuServiceStartResponse{}, nil
+	return &processv1.StartResponse{}, nil
 }
 
 func (q *QemuServer) Stop(ctx context.Context,
-	req *servicesv1.QemuServiceStopRequest) (*emptypb.Empty, error) {
+	req *processv1.StopRequest) (*emptypb.Empty, error) {
 	if req.Force {
 		q.forceStopCh <- req.Id
 		return &emptypb.Empty{}, nil
@@ -458,7 +458,7 @@ func (q *QemuServer) getMemoryStatsForInstance(ctx context.Context, id string) *
 	return parseGuestStats(result)
 }
 
-func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceInfoRequest) (*servicesv1.QemuServiceInfoResponse, error) {
+func (q *QemuServer) Info(ctx context.Context, request *processv1.InfoRequest) (*processv1.InfoResponse, error) {
 	res := []*runtimev1.RuntimeInfo{}
 	for _, id := range request.Ids {
 		info := &runtimev1.RuntimeInfo{
@@ -477,12 +477,12 @@ func (q *QemuServer) Info(ctx context.Context, request *servicesv1.QemuServiceIn
 		res = append(res, info)
 	}
 
-	return &servicesv1.QemuServiceInfoResponse{
+	return &processv1.InfoResponse{
 		Info: res,
 	}, nil
 }
 
-func (q *QemuServer) List(ctx context.Context, req *servicesv1.QemuServiceListRequest) (*servicesv1.QemuServiceListResponse, error) {
+func (q *QemuServer) List(ctx context.Context, req *processv1.ListRequest) (*processv1.ListResponse, error) {
 	entries, err := os.ReadDir(q.instancesDir)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to read instances dir: %v", err)
@@ -501,10 +501,10 @@ func (q *QemuServer) List(ctx context.Context, req *servicesv1.QemuServiceListRe
 		ids = append(ids, entry.Name())
 	}
 
-	return &servicesv1.QemuServiceListResponse{Ids: ids}, nil
+	return &processv1.ListResponse{Ids: ids}, nil
 }
 
-func (q *QemuServer) Remove(ctx context.Context, req *servicesv1.QemuServiceRemoveRequest) (*emptypb.Empty, error) {
+func (q *QemuServer) Remove(ctx context.Context, req *processv1.RemoveRequest) (*emptypb.Empty, error) {
 	dir := q.instanceDir(req.Id)
 
 	// Refuse to remove if process is still alive
@@ -558,7 +558,7 @@ func (q *QemuServer) reattachOnStartup() {
 	}
 }
 
-func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.AddressResolver, config *settingsv1.QemuConfig, imageClient images.ImageClient) (servicesv1.QemuServiceServer, error) {
+func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.AddressResolver, config *settingsv1.QemuConfig, imageClient images.ImageClient) (processv1.QemuServiceServer, error) {
 	instancesDir := filepath.Join(config.Root, "instances")
 	if err := os.MkdirAll(instancesDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create instances dir: %w", err)

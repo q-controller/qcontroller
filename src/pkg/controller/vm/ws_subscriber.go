@@ -6,7 +6,7 @@ import (
 	"net/url"
 
 	"github.com/gorilla/websocket"
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -33,7 +33,7 @@ func dialWebSocket(ctx context.Context, httpEndpoint string) (*wsSubscriber, err
 	}
 
 	// Send SubscribeRequest (empty, mirrors the gateway protocol).
-	subReq := &servicesv1.SubscribeRequest{}
+	subReq := &eventv1.SubscribeRequest{}
 	reqBytes, err := proto.Marshal(subReq)
 	if err != nil {
 		_ = conn.Close()
@@ -48,7 +48,7 @@ func dialWebSocket(ctx context.Context, httpEndpoint string) (*wsSubscriber, err
 }
 
 // Recv blocks until the next SubscribeResponse is received.
-func (s *wsSubscriber) Recv() (*servicesv1.SubscribeResponse, error) {
+func (s *wsSubscriber) Recv() (*eventv1.SubscribeResponse, error) {
 	for {
 		msgType, data, err := s.conn.ReadMessage()
 		if err != nil {
@@ -57,7 +57,7 @@ func (s *wsSubscriber) Recv() (*servicesv1.SubscribeResponse, error) {
 		if msgType != websocket.BinaryMessage {
 			continue
 		}
-		var resp servicesv1.SubscribeResponse
+		var resp eventv1.SubscribeResponse
 		if err := proto.Unmarshal(data, &resp); err != nil {
 			return nil, fmt.Errorf("unmarshal subscribe response: %w", err)
 		}

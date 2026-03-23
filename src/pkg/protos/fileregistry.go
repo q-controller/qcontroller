@@ -10,7 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
+	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images/storage"
 	"google.golang.org/grpc"
@@ -34,13 +35,13 @@ func hashFile(path string) (string, error) {
 }
 
 type FileRegistry struct {
-	servicesv1.UnimplementedFileRegistryServiceServer
+	fileregistryv1.UnimplementedFileRegistryServiceServer
 	tempDir        string
 	storage        storage.StorageBackend
 	eventPublisher *events.Publisher
 }
 
-func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.UploadImageRequest, servicesv1.UploadImageResponse]) error {
+func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[fileregistryv1.UploadImageRequest, fileregistryv1.UploadImageResponse]) error {
 	var fileID string
 	var file *os.File
 
@@ -72,7 +73,7 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 			}
 			if existing, metaErr := f.storage.GetMetadata(fileID); metaErr == nil && existing.Hash == contentHash {
 				slog.Info("Image already exists with same content, skipping store", "image_id", fileID)
-				return stream.SendAndClose(&servicesv1.UploadImageResponse{
+				return stream.SendAndClose(&fileregistryv1.UploadImageResponse{
 					ImageId: fileID,
 				})
 			}
@@ -88,14 +89,14 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 			}
 
 			defer func() {
-				if err := f.eventPublisher.PublishImageUpdate(&servicesv1.VMImage{
+				if err := f.eventPublisher.PublishImageUpdate(&fileregistryv1.VMImage{
 					ImageId: fileID,
-				}, servicesv1.ImageEvent_EVENT_TYPE_UPLOADED); err != nil {
+				}, eventv1.ImageEvent_EVENT_TYPE_UPLOADED); err != nil {
 					slog.Error("failed to publish image uploaded event", "image_id", fileID, "error", err)
 				}
 			}()
 
-			return stream.SendAndClose(&servicesv1.UploadImageResponse{
+			return stream.SendAndClose(&fileregistryv1.UploadImageResponse{
 				ImageId: fileID,
 			})
 		}
@@ -128,7 +129,7 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[servicesv1.
 	}
 }
 
-func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, stream grpc.ServerStreamingServer[servicesv1.DownloadImageResponse]) error {
+func (f *FileRegistry) DownloadImage(req *fileregistryv1.DownloadImageRequest, stream grpc.ServerStreamingServer[fileregistryv1.DownloadImageResponse]) error {
 	exists, existsErr := f.storage.Exists(req.ImageId)
 	if existsErr != nil {
 		return status.Errorf(codes.Internal, "failed to check image existence: %v", existsErr)
@@ -158,7 +159,7 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 			return status.Errorf(codes.Internal, "error reading file: %v", err)
 		}
 
-		if sendErr := stream.Send(&servicesv1.DownloadImageResponse{Chunk: buffer[:n]}); sendErr != nil {
+		if sendErr := stream.Send(&fileregistryv1.DownloadImageResponse{Chunk: buffer[:n]}); sendErr != nil {
 			return status.Errorf(codes.Internal, "failed to send chunk: %v", sendErr)
 		}
 	}
@@ -166,36 +167,36 @@ func (f *FileRegistry) DownloadImage(req *servicesv1.DownloadImageRequest, strea
 	return nil
 }
 
-func (f *FileRegistry) RemoveImage(ctx context.Context, req *servicesv1.RemoveImageRequest) (*servicesv1.RemoveImageResponse, error) {
+func (f *FileRegistry) RemoveImage(ctx context.Context, req *fileregistryv1.RemoveImageRequest) (*fileregistryv1.RemoveImageResponse, error) {
 	removeErr := f.storage.Remove(req.ImageId)
 	if removeErr != nil {
 		slog.Warn("failed to remove image", "image_id", req.ImageId, "error", removeErr)
-		return &servicesv1.RemoveImageResponse{
+		return &fileregistryv1.RemoveImageResponse{
 			Removed: false,
 		}, nil
 	}
 
 	defer func() {
-		if err := f.eventPublisher.PublishImageUpdate(&servicesv1.VMImage{
+		if err := f.eventPublisher.PublishImageUpdate(&fileregistryv1.VMImage{
 			ImageId: req.ImageId,
-		}, servicesv1.ImageEvent_EVENT_TYPE_REMOVED); err != nil {
+		}, eventv1.ImageEvent_EVENT_TYPE_REMOVED); err != nil {
 			slog.Error("failed to publish image removal event", "image_id", req.ImageId, "error", err)
 		}
 	}()
 
-	return &servicesv1.RemoveImageResponse{
+	return &fileregistryv1.RemoveImageResponse{
 		Removed: true,
 	}, nil
 }
 
-func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImagesRequest) (*servicesv1.ListImagesResponse, error) {
+func (f *FileRegistry) ListImages(ctx context.Context, req *fileregistryv1.ListImagesRequest) (*fileregistryv1.ListImagesResponse, error) {
 	imageIDs, err := f.storage.List()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get image list: %v", err)
 	}
 
-	resp := &servicesv1.ListImagesResponse{
-		Images: []*servicesv1.VMImage{},
+	resp := &fileregistryv1.ListImagesResponse{
+		Images: []*fileregistryv1.VMImage{},
 	}
 	for _, id := range imageIDs {
 		metadata, metadataErr := f.storage.GetMetadata(id)
@@ -204,7 +205,7 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImage
 			continue
 		}
 
-		resp.Images = append(resp.Images, &servicesv1.VMImage{
+		resp.Images = append(resp.Images, &fileregistryv1.VMImage{
 			ImageId:    metadata.ImageID,
 			Hash:       metadata.Hash,
 			Size:       metadata.Size,
@@ -215,7 +216,7 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *servicesv1.ListImage
 	return resp, nil
 }
 
-func NewFileRegistry(root, eventsEndpoint string) (servicesv1.FileRegistryServiceServer, error) {
+func NewFileRegistry(root, eventsEndpoint string) (fileregistryv1.FileRegistryServiceServer, error) {
 	// Create temp directory
 	tempDir, pathErr := os.MkdirTemp("", "fileregistry-*")
 	if pathErr != nil {

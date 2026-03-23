@@ -142,10 +142,10 @@ func TestProgressWriter_ZeroTotal(t *testing.T) {
 }
 
 func TestOapi2ProtoInfo_FullFields(t *testing.T) {
-	src := &cc.ServicesV1Info{
+	src := &cc.ServicesControllerV1Info{
 		Name: ptr("test-vm"),
 		Node: ptr("node1"),
-		Spec: &cc.ServicesV1VMSpec{
+		Spec: &cc.ServicesControllerV1VMSpec{
 			Image: ptr("ubuntu-22.04"),
 			Vm: &cc.SettingsV1VM{
 				Cpus:   ptr(uint32(4)),
@@ -157,7 +157,7 @@ func TestOapi2ProtoInfo_FullFields(t *testing.T) {
 				NetworkConfig: ptr("version: 2"),
 			},
 		},
-		Status: &cc.ServicesV1VMStatus{
+		Status: &cc.ServicesControllerV1VMStatus{
 			State:  ptr("STATE_RUNNING"),
 			Hwaddr: ptr("aa:bb:cc:dd:ee:ff"),
 			RuntimeInfo: &cc.VmRuntimeV1RuntimeInfo{
@@ -204,7 +204,7 @@ func TestOapi2ProtoInfo_FullFields(t *testing.T) {
 }
 
 func TestOapi2ProtoInfo_NilFields(t *testing.T) {
-	info := oapi2ProtoInfo(&cc.ServicesV1Info{})
+	info := oapi2ProtoInfo(&cc.ServicesControllerV1Info{})
 
 	assert.Empty(t, info.Name)
 	assert.Nil(t, info.Spec)
@@ -212,8 +212,8 @@ func TestOapi2ProtoInfo_NilFields(t *testing.T) {
 }
 
 func TestOapi2ProtoInfo_PartialStatus(t *testing.T) {
-	info := oapi2ProtoInfo(&cc.ServicesV1Info{
-		Status: &cc.ServicesV1VMStatus{
+	info := oapi2ProtoInfo(&cc.ServicesControllerV1Info{
+		Status: &cc.ServicesControllerV1VMStatus{
 			RuntimeInfo: &cc.VmRuntimeV1RuntimeInfo{
 				Name: ptr("vm1"),
 			},

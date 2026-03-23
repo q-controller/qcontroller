@@ -10,7 +10,9 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
+	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/frontend"
 	"github.com/q-controller/qcontroller/src/pkg/images"
@@ -23,29 +25,29 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func createFileRegistryClient(endpoint string) (v1.FileRegistryServiceClient, error) {
+func createFileRegistryClient(endpoint string) (fileregistryv1.FileRegistryServiceClient, error) {
 	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("did not connect: %w", err)
 	}
 
-	return v1.NewFileRegistryServiceClient(conn), nil
+	return fileregistryv1.NewFileRegistryServiceClient(conn), nil
 }
 
-func createEventClient(endpoint string) (v1.EventServiceClient, error) {
+func createEventClient(endpoint string) (eventv1.EventServiceClient, error) {
 	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("did not connect: %w", err)
 	}
 
-	return v1.NewEventServiceClient(conn), nil
+	return eventv1.NewEventServiceClient(conn), nil
 }
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-func wsHandler(grpcClient v1.EventServiceClient) http.HandlerFunc {
+func wsHandler(grpcClient eventv1.EventServiceClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, connErr := upgrader.Upgrade(w, r, nil)
 		if connErr != nil {
@@ -62,7 +64,7 @@ func wsHandler(grpcClient v1.EventServiceClient) http.HandlerFunc {
 			return
 		}
 
-		var req v1.SubscribeRequest
+		var req eventv1.SubscribeRequest
 		if err := proto.Unmarshal(data, &req); err != nil {
 			slog.Warn("Failed to unmarshal subscribe request", "error", err)
 			return
@@ -165,7 +167,7 @@ var gwCmd = &cobra.Command{
 		}
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-		err := v1.RegisterControllerServiceHandlerFromEndpoint(ctx, mux, config.ControllerEndpoint, opts)
+		err := controllerv1.RegisterControllerServiceHandlerFromEndpoint(ctx, mux, config.ControllerEndpoint, opts)
 		if err != nil {
 			return err
 		}

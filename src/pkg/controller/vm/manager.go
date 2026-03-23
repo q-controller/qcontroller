@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
@@ -110,13 +111,13 @@ func (m *Manager) Create(ctx context.Context, id, imageId string,
 	m.mutex.Unlock()
 
 	// Seed the cache so the VM appears in the UI immediately after creation.
-	_ = m.eventsPublisher.VMUpdated(&servicesv1.Info{
+	_ = m.eventsPublisher.VMUpdated(&controllerv1.Info{
 		Name: qualifiedName,
-		Spec: &servicesv1.VMSpec{
+		Spec: &controllerv1.VMSpec{
 			Image: imageId,
 			Vm:    &settingsv1.VM{Cpus: cpus, Memory: memory, Disk: disk},
 		},
-		Status: &servicesv1.VMStatus{
+		Status: &controllerv1.VMStatus{
 			State: vmv1.State_STATE_STOPPED.String(),
 		},
 		Node: node,
@@ -178,13 +179,13 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 }
 
 // Info reads from the EventPublisher's cache. No network calls.
-func (m *Manager) Info(_ context.Context, id string) ([]*servicesv1.Info, error) {
+func (m *Manager) Info(_ context.Context, id string) ([]*controllerv1.Info, error) {
 	if id != "" {
 		info := m.eventsPublisher.Get(id)
 		if info == nil {
 			return nil, fmt.Errorf("instance %s not found", id)
 		}
-		return []*servicesv1.Info{info}, nil
+		return []*controllerv1.Info{info}, nil
 	}
 	return m.eventsPublisher.GetAll(), nil
 }
@@ -407,7 +408,7 @@ func (m *Manager) runSubscription(nodeName, endpoint string) error {
 		qualifiedName := m.qualifyName(nodeName, info.Name)
 
 		switch vmEvent.Type {
-		case servicesv1.VMEvent_EVENT_TYPE_UPDATED:
+		case eventv1.VMEvent_EVENT_TYPE_UPDATED:
 			m.mutex.Lock()
 			m.vmIndex[qualifiedName] = nodeName
 			m.mutex.Unlock()
@@ -418,7 +419,7 @@ func (m *Manager) runSubscription(nodeName, endpoint string) error {
 				slog.Warn("Failed to forward VM event", "id", qualifiedName, "error", eventErr)
 			}
 
-		case servicesv1.VMEvent_EVENT_TYPE_REMOVED:
+		case eventv1.VMEvent_EVENT_TYPE_REMOVED:
 			m.mutex.Lock()
 			delete(m.vmIndex, qualifiedName)
 			m.mutex.Unlock()

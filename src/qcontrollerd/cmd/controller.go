@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"net"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
+	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images"
@@ -39,7 +41,7 @@ var controllerCmd = &cobra.Command{
 
 		s := grpc.NewServer()
 
-		servicesv1.RegisterEventServiceServer(s, protos.NewEventServer())
+		eventv1.RegisterEventServiceServer(s, protos.NewEventServer())
 
 		eventPublisher, eventPublisherErr := events.NewEventPublisher(context.Background(), lis.Addr().String())
 		if eventPublisherErr != nil {
@@ -53,7 +55,7 @@ var controllerCmd = &cobra.Command{
 				return fmt.Errorf("failed to connect to file registry: %w", frErr)
 			}
 			var imgErr error
-			localImages, imgErr = images.CreateImageClient(servicesv1.NewFileRegistryServiceClient(fileRegistryConn))
+			localImages, imgErr = images.CreateImageClient(fileregistryv1.NewFileRegistryServiceClient(fileRegistryConn))
 			if imgErr != nil {
 				return fmt.Errorf("failed to create image client: %w", imgErr)
 			}
@@ -63,7 +65,7 @@ var controllerCmd = &cobra.Command{
 		if contrErr != nil {
 			return fmt.Errorf("failed to create server %w", contrErr)
 		}
-		servicesv1.RegisterControllerServiceServer(s, contr)
+		controllerv1.RegisterControllerServiceServer(s, contr)
 
 		if servErr := s.Serve(lis); servErr != nil {
 			return fmt.Errorf("failed to serve: %w", servErr)

@@ -7,7 +7,8 @@ import (
 	"net"
 	"time"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
@@ -67,7 +68,7 @@ func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolve
 	}
 	defer func() { _ = fileRegistryConn.Close() }()
 
-	fileRegistryClient := servicesv1.NewFileRegistryServiceClient(fileRegistryConn)
+	fileRegistryClient := fileregistryv1.NewFileRegistryServiceClient(fileRegistryConn)
 	imageClient, imageClientErr := images.CreateImageClient(fileRegistryClient)
 	if imageClientErr != nil {
 		return fmt.Errorf("failed to create image client: %w", imageClientErr)
@@ -77,7 +78,7 @@ func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolve
 	if regErr != nil {
 		return fmt.Errorf("failed to create server %w", regErr)
 	}
-	servicesv1.RegisterQemuServiceServer(s, reg)
+	processv1.RegisterQemuServiceServer(s, reg)
 
 	// Server error channel
 	errCh := make(chan error, 1)

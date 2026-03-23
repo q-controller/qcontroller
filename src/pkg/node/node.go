@@ -3,7 +3,7 @@ package node
 import (
 	"context"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 )
 
@@ -14,5 +14,5 @@ type Manager interface {
 	Start(ctx context.Context, name string) error
 	Stop(ctx context.Context, name string, force bool) error
 	Remove(ctx context.Context, name string) error
-	Info(ctx context.Context, name string) ([]*servicesv1.Info, error)
+	Info(ctx context.Context, name string) ([]*controllerv1.Info, error)
 }

@@ -14,7 +14,7 @@ import (
 
 	cc "github.com/q-controller/qcontroller/src/generated/oapi/controllerclient"
 	ic "github.com/q-controller/qcontroller/src/generated/oapi/imageclient"
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
@@ -66,9 +66,9 @@ func (n *remoteNodeManager) Create(ctx context.Context, id, imageId string,
 		return fmt.Errorf("ensure image on %s: %w", n.name, err)
 	}
 
-	req := cc.ServicesV1CreateRequest{
+	req := cc.ServicesControllerV1CreateRequest{
 		Name: &id,
-		Spec: &cc.ServicesV1VMSpec{
+		Spec: &cc.ServicesControllerV1VMSpec{
 			Image: &imageId,
 			Vm: &cc.SettingsV1VM{
 				Cpus:   &cpus,
@@ -243,7 +243,7 @@ func (n *remoteNodeManager) Remove(ctx context.Context, name string) error {
 	return nil
 }
 
-func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*servicesv1.Info, error) {
+func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*controllerv1.Info, error) {
 	resp, err := n.client.ControllerServiceInfoWithResponse(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("info on %s: %w", n.name, err)
@@ -254,7 +254,7 @@ func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*servicesv
 	if resp.JSON200 == nil || resp.JSON200.Info == nil {
 		return nil, nil
 	}
-	result := make([]*servicesv1.Info, 0, len(*resp.JSON200.Info))
+	result := make([]*controllerv1.Info, 0, len(*resp.JSON200.Info))
 	for _, item := range *resp.JSON200.Info {
 		result = append(result, oapi2ProtoInfo(&item))
 	}
@@ -319,13 +319,13 @@ func derefUint64Str(s *string) uint64 {
 	return v
 }
 
-func oapi2ProtoInfo(src *cc.ServicesV1Info) *servicesv1.Info {
-	info := &servicesv1.Info{
+func oapi2ProtoInfo(src *cc.ServicesControllerV1Info) *controllerv1.Info {
+	info := &controllerv1.Info{
 		Name: derefStr(src.Name),
 		Node: derefStr(src.Node),
 	}
 	if src.Spec != nil {
-		spec := &servicesv1.VMSpec{
+		spec := &controllerv1.VMSpec{
 			Image: derefStr(src.Spec.Image),
 		}
 		if src.Spec.Vm != nil {
@@ -344,7 +344,7 @@ func oapi2ProtoInfo(src *cc.ServicesV1Info) *servicesv1.Info {
 		info.Spec = spec
 	}
 	if src.Status != nil {
-		status := &servicesv1.VMStatus{
+		status := &controllerv1.VMStatus{
 			State:  derefStr(src.Status.State),
 			Hwaddr: derefStr(src.Status.Hwaddr),
 		}
