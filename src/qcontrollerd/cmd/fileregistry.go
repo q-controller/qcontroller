@@ -6,7 +6,7 @@ import (
 	"net"
 	"path/filepath"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
@@ -47,7 +47,7 @@ var fileRegistryCmd = &cobra.Command{
 		if regErr != nil {
 			return fmt.Errorf("failed to create file registry: %w", regErr)
 		}
-		servicesv1.RegisterFileRegistryServiceServer(s, reg)
+		fileregistryv1.RegisterFileRegistryServiceServer(s, reg)
 
 		if servErr := s.Serve(lis); servErr != nil {
 			return fmt.Errorf("failed to serve: %w", servErr)

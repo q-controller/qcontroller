@@ -11,7 +11,7 @@ import (
 	"time"
 
 	imageservice "github.com/q-controller/qcontroller/src/generated/oapi"
-	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	v1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 )
 
 type imageClientImpl struct {

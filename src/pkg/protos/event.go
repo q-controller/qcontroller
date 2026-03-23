@@ -4,7 +4,7 @@ import (
 	"io"
 	"sync"
 
-	v1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	v1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	"google.golang.org/grpc"
 )
 

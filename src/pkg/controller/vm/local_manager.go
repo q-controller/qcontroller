@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	servicesv1 "github.com/q-controller/qcontroller/src/generated/services/v1"
+	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	runtimev1 "github.com/q-controller/qcontroller/src/generated/vm/runtime/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
@@ -45,7 +46,7 @@ func (n *localNodeManager) qemuList(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
-	resp, err := servicesv1.NewQemuServiceClient(conn).List(ctx, &servicesv1.QemuServiceListRequest{})
+	resp, err := processv1.NewQemuServiceClient(conn).List(ctx, &processv1.ListRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +113,8 @@ func (n *localNodeManager) Start(ctx context.Context, name string) error {
 	}
 	defer func() { _ = conn.Close() }()
 
-	if _, startErr := servicesv1.NewQemuServiceClient(conn).Start(ctx, &servicesv1.QemuServiceStartRequest{
-		Config: &servicesv1.QemuConfig{
+	if _, startErr := processv1.NewQemuServiceClient(conn).Start(ctx, &processv1.StartRequest{
+		Config: &processv1.QemuConfig{
 			Id:      inst.Id,
 			ImageId: inst.ImageId,
 			Hardware: &settingsv1.VM{
@@ -121,7 +122,7 @@ func (n *localNodeManager) Start(ctx context.Context, name string) error {
 				Memory: inst.Hardware.Memory,
 				Disk:   inst.Hardware.Disk,
 			},
-			Network: &servicesv1.NetworkConfig{
+			Network: &processv1.NetworkConfig{
 				Mac: *inst.Hwaddr,
 			},
 			CloudInit: cloudInit,
@@ -141,7 +142,7 @@ func (n *localNodeManager) Stop(ctx context.Context, name string, force bool) er
 		return err
 	}
 	defer func() { _ = conn.Close() }()
-	_, err = servicesv1.NewQemuServiceClient(conn).Stop(ctx, &servicesv1.QemuServiceStopRequest{Id: name, Force: force})
+	_, err = processv1.NewQemuServiceClient(conn).Stop(ctx, &processv1.StopRequest{Id: name, Force: force})
 	return err
 }
 
@@ -169,14 +170,14 @@ func (n *localNodeManager) Remove(ctx context.Context, name string) error {
 		return nil
 	}
 	defer func() { _ = conn.Close() }()
-	if _, removeErr := servicesv1.NewQemuServiceClient(conn).Remove(ctx, &servicesv1.QemuServiceRemoveRequest{Id: name}); removeErr != nil {
+	if _, removeErr := processv1.NewQemuServiceClient(conn).Remove(ctx, &processv1.RemoveRequest{Id: name}); removeErr != nil {
 		slog.Warn("Failed to remove instance from QEMU", "id", name, "error", removeErr)
 	}
 
 	return nil
 }
 
-func (n *localNodeManager) Info(ctx context.Context, name string) ([]*servicesv1.Info, error) {
+func (n *localNodeManager) Info(ctx context.Context, name string) ([]*controllerv1.Info, error) {
 	var instances []*vmv1.Instance
 	if name == "" {
 		listed, err := n.state.List()
@@ -197,7 +198,7 @@ func (n *localNodeManager) Info(ctx context.Context, name string) ([]*servicesv1
 
 	// Collect running instance IDs for a single batched runtime query.
 	var runningIDs []string
-	res := make([]*servicesv1.Info, 0, len(instances))
+	res := make([]*controllerv1.Info, 0, len(instances))
 	for _, inst := range instances {
 		info := n.instanceToInfo(inst)
 		if inst.State == vmv1.State_STATE_RUNNING {
@@ -212,21 +213,21 @@ func (n *localNodeManager) Info(ctx context.Context, name string) ([]*servicesv1
 	return res, nil
 }
 
-func (n *localNodeManager) instanceToInfo(inst *vmv1.Instance) *servicesv1.Info {
-	spec := &servicesv1.VMSpec{
+func (n *localNodeManager) instanceToInfo(inst *vmv1.Instance) *controllerv1.Info {
+	spec := &controllerv1.VMSpec{
 		Vm:    inst.Hardware,
 		Image: inst.ImageId,
 	}
 	if inst.Cloudinit != nil {
 		spec.CloudInit = inst.Cloudinit
 	}
-	status := &servicesv1.VMStatus{
+	status := &controllerv1.VMStatus{
 		State: inst.State.String(),
 	}
 	if inst.Hwaddr != nil {
 		status.Hwaddr = *inst.Hwaddr
 	}
-	return &servicesv1.Info{
+	return &controllerv1.Info{
 		Name:   inst.Id,
 		Spec:   spec,
 		Status: status,
@@ -234,13 +235,13 @@ func (n *localNodeManager) instanceToInfo(inst *vmv1.Instance) *servicesv1.Info 
 	}
 }
 
-func (n *localNodeManager) batchEnrichWithRuntime(ctx context.Context, infos []*servicesv1.Info, runningIDs []string) {
+func (n *localNodeManager) batchEnrichWithRuntime(ctx context.Context, infos []*controllerv1.Info, runningIDs []string) {
 	conn, err := n.dial()
 	if err != nil {
 		return
 	}
 	defer func() { _ = conn.Close() }()
-	resp, err := servicesv1.NewQemuServiceClient(conn).Info(ctx, &servicesv1.QemuServiceInfoRequest{Ids: runningIDs})
+	resp, err := processv1.NewQemuServiceClient(conn).Info(ctx, &processv1.InfoRequest{Ids: runningIDs})
 	if err != nil {
 		return
 	}
@@ -253,7 +254,7 @@ func (n *localNodeManager) batchEnrichWithRuntime(ctx context.Context, infos []*
 	for _, info := range infos {
 		if ri, ok := runtimeByName[info.Name]; ok {
 			if info.Status == nil {
-				info.Status = &servicesv1.VMStatus{}
+				info.Status = &controllerv1.VMStatus{}
 			}
 			info.Status.RuntimeInfo = ri
 		}
