@@ -34,9 +34,9 @@ func (s *Server) Start(ctx context.Context, request *servicesv1.StartRequest) (*
 }
 
 func (s *Server) Create(ctx context.Context, request *servicesv1.CreateRequest) (*emptypb.Empty, error) {
-	qualifiedName, createErr := s.manager.Create(ctx, request.Name, request.Image,
-		request.Vm.Cpus, request.Vm.Memory,
-		request.Vm.Disk, request.CloudInit, request.Node)
+	qualifiedName, createErr := s.manager.Create(ctx, request.Name, request.Spec.Image,
+		request.Spec.Vm.Cpus, request.Spec.Vm.Memory,
+		request.Spec.Vm.Disk, request.Spec.CloudInit, request.Node)
 	if createErr != nil {
 		return nil, status.Errorf(codes.Internal, "method Launch failed: %v", createErr)
 	}

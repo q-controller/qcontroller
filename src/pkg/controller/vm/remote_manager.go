@@ -67,16 +67,18 @@ func (n *remoteNodeManager) Create(ctx context.Context, id, imageId string,
 	}
 
 	req := cc.ServicesV1CreateRequest{
-		Name:  &id,
-		Image: &imageId,
-		Vm: &cc.SettingsV1VM{
-			Cpus:   &cpus,
-			Memory: &memory,
-			Disk:   &disk,
+		Name: &id,
+		Spec: &cc.ServicesV1VMSpec{
+			Image: &imageId,
+			Vm: &cc.SettingsV1VM{
+				Cpus:   &cpus,
+				Memory: &memory,
+				Disk:   &disk,
+			},
 		},
 	}
 	if cloudInit != nil {
-		req.CloudInit = &cc.VmStatemachineV1CloudInit{
+		req.Spec.CloudInit = &cc.VmStatemachineV1CloudInit{
 			Userdata:      &cloudInit.Userdata,
 			NetworkConfig: &cloudInit.NetworkConfig,
 		}
