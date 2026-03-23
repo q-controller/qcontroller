@@ -15,7 +15,7 @@
 
 Operations are defined using [Protocol Buffers](/src/protos/) and exposed via both **gRPC** and a **RESTful HTTP gateway**, making integration with scripts, dashboards, or automation frameworks straightforward.
 
-VMs can be managed across multiple nodes. Each node runs the full set of services (`qemu`, `fileregistry`, `controller`, `gateway`). All cross-node communication goes through the gateway's REST API and WebSocket event stream — gRPC is used only for localhost communication within each node. The controller pushes images to remote nodes before creating VMs there.
+The architecture separates node-level services from multi-node coordination. Each node runs `qemu`, `fileregistry`, and `controller` — all communicating via gRPC on localhost. The `orchestrator` sits on top, providing a unified REST API, WebSocket event streaming, image distribution, and the web UI. This is the same architecture regardless of the number of nodes — even a single-node setup runs through the orchestrator.
 
 ---
 
@@ -35,8 +35,8 @@ VMs can be managed across multiple nodes. Each node runs the full set of service
 - 🎯 **Modern web UI**: Full-featured React-based interface available at [qcontroller-ui](https://github.com/q-controller/qcontroller-ui).
 - 🧠 **Declarative VM descriptions**: Define VM specs via JSON configs matching Protobuf definitions.
 - 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
-- **Real-time event streaming**: Live VM state changes via WebSocket at `/ws`, powered by EventService subscriptions.
-- **Automatic image distribution**: Controller pushes images to remote nodes before VM creation.
+- **Real-time event streaming**: Live VM state changes via WebSocket at `/ws`, aggregated from all nodes by the orchestrator.
+- **Automatic image distribution**: Orchestrator pushes images to remote nodes before VM creation.
 - 📜 **Auto-generated OpenAPI schema**: Serves interactive API docs using [http-swagger](https://github.com/swaggo/http-swagger).
 - 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
 
@@ -59,7 +59,7 @@ sudo installer -pkg build/qcontrollerd.pkg -target /
 This will:
 - Install `qcontrollerd` to `/usr/local/bin/`
 - Create LaunchDaemon (system service) for QEMU
-- Create LaunchAgent (user services) for controller and gateway
+- Create LaunchAgent (user services) for controller and orchestrator
 - Auto-start all services after installation
 
 To uninstall:
@@ -81,15 +81,15 @@ make
 The compiled binary provides the following subcommands:
 
 * `qemu` – Manages VM process execution. Requires root for networking (TAP on Linux, vmnet on macOS).
-* `controller` – Orchestrates VM lifecycle across local and remote nodes. Local node state is polled from QemuService; remote node state is received via WebSocket event subscriptions through the remote gateway, with auto-reconnect. When creating VMs on remote nodes, the controller pushes images via the gateway's REST API if they don't already exist there.
-* `gateway` – Exposes REST endpoints mapped from gRPC via gRPC-Gateway. Serves as the single entry point per node — all cross-node communication flows through it.
-* `fileregistry` – Manages VM image storage and provides chunked upload/download via gRPC (localhost only).
+* `controller` – Manages VM lifecycle on the local node. Polls QemuService for state changes and exposes them via gRPC (ControllerService + EventService).
+* `orchestrator` – Coordinates multiple nodes. Subscribes to each node's EventService, aggregates state, distributes images, and serves the REST API, WebSocket event stream, Swagger UI, and web frontend via gRPC-gateway.
+* `fileregistry` – Manages VM image storage. Provides chunked upload/download via gRPC. Runs on each node and on the orchestrator.
 
 > **Separation of Controller and QEMU**:
 > The qemu service requires elevated privileges for networking (TAP/vmnet). To avoid granting root to the entire application, it runs as a separate process. The controller and other services run as non-root users.
 
-> **Multi-node architecture**:
-> In multi-node setups, each node runs all four services. Nodes list each other as `remotes` in their controller config, using the remote node's gateway URL (e.g. `http://192.168.1.5:8080`). The controller communicates with remote nodes exclusively through the gateway's REST API and WebSocket — only a single port needs to be exposed per node. Images are automatically pushed to remote nodes before VM creation.
+> **Architecture**:
+> Each node runs `qemu`, `fileregistry`, and `controller` — all communicating via gRPC on localhost. The orchestrator connects to each node's controller and event service via gRPC. Images are uploaded to the orchestrator and automatically pushed to nodes on demand. The same setup works for one node or many.
 
 ### Running the App
 
@@ -109,17 +109,17 @@ A startup script is provided for running all services together during developmen
 
 Run `./start.sh --help` for full usage details (interface, CIDR, DHCP range, macOS mode).
 
-To add remote nodes, edit the `remotes` array in the generated controller config. Each remote entry needs a `name` and `endpoint` (the remote node's gateway URL, e.g. `http://192.168.1.5:8080`). You must also set `fileRegistryEndpoint` to the local file registry address so images can be pushed to remote nodes.
+To add remote nodes, edit the `nodes` array in the orchestrator config. Each node entry needs a `name`, `endpoint` (the node's controller gRPC address), and `fileRegistryEndpoint` (the node's file registry gRPC address).
 
 For multi-node setups with overlay networking, see the helper scripts:
 - [`setup-nebula.sh`](/setup-nebula.sh) — generates Nebula CA, certificates, and configs for two nodes
 - [`setup-overlay.sh`](/setup-overlay.sh) — adds/removes nft forwarding rules between the QEMU bridge and the overlay interface
 
 Default service ports:
-- gateway: `http://localhost:8080` (the only port exposed for cross-node communication)
-- controller: `localhost:8009` (gRPC, localhost only)
-- qemu: `localhost:8008` (gRPC, localhost only)
-- fileregistry: `localhost:8010` (gRPC, localhost only)
+- orchestrator: `http://localhost:8080` (HTTP) / `localhost:8081` (gRPC, internal)
+- controller: `localhost:8009` (gRPC)
+- qemu: `localhost:8008` (gRPC)
+- fileregistry: `localhost:8010` (gRPC)
 
 Then access the interfaces:
 - Web UI: `http://localhost:8080/ui/`
