@@ -143,32 +143,36 @@ func TestProgressWriter_ZeroTotal(t *testing.T) {
 
 func TestOapi2ProtoInfo_FullFields(t *testing.T) {
 	src := &cc.ServicesV1Info{
-		Name:    ptr("test-vm"),
-		State:   ptr("STATE_RUNNING"),
-		Hwaddr:  ptr("aa:bb:cc:dd:ee:ff"),
-		Node:    ptr("node1"),
-		ImageId: ptr("ubuntu-22.04"),
-		Details: &cc.SettingsV1VM{
-			Cpus:   ptr(uint32(4)),
-			Memory: ptr(uint32(2048)),
-			Disk:   ptr(uint32(40960)),
-		},
-		CloudInit: &cc.VmStatemachineV1CloudInit{
-			Userdata:      ptr("#cloud-config"),
-			NetworkConfig: ptr("version: 2"),
-		},
-		RuntimeInfo: &cc.VmRuntimeV1RuntimeInfo{
-			Name:        ptr("test-vm"),
-			Ipaddresses: &[]string{"10.0.0.1", "10.0.0.2"},
-			MemoryStats: &cc.SettingsV1MemoryStats{
-				TotalMemory:     ptr("4294967296"),
-				AvailableMemory: ptr("2147483648"),
-				FreeMemory:      ptr("1073741824"),
-				DiskCaches:      ptr("536870912"),
+		Name: ptr("test-vm"),
+		Node: ptr("node1"),
+		Spec: &cc.ServicesV1VMSpec{
+			Image: ptr("ubuntu-22.04"),
+			Vm: &cc.SettingsV1VM{
+				Cpus:   ptr(uint32(4)),
+				Memory: ptr(uint32(2048)),
+				Disk:   ptr(uint32(40960)),
 			},
-			DiskStats: &cc.SettingsV1DiskStats{
-				TotalBytes: ptr("42949672960"),
-				UsedBytes:  ptr("21474836480"),
+			CloudInit: &cc.VmStatemachineV1CloudInit{
+				Userdata:      ptr("#cloud-config"),
+				NetworkConfig: ptr("version: 2"),
+			},
+		},
+		Status: &cc.ServicesV1VMStatus{
+			State:  ptr("STATE_RUNNING"),
+			Hwaddr: ptr("aa:bb:cc:dd:ee:ff"),
+			RuntimeInfo: &cc.VmRuntimeV1RuntimeInfo{
+				Name:        ptr("test-vm"),
+				Ipaddresses: &[]string{"10.0.0.1", "10.0.0.2"},
+				MemoryStats: &cc.SettingsV1MemoryStats{
+					TotalMemory:     ptr("4294967296"),
+					AvailableMemory: ptr("2147483648"),
+					FreeMemory:      ptr("1073741824"),
+					DiskCaches:      ptr("536870912"),
+				},
+				DiskStats: &cc.SettingsV1DiskStats{
+					TotalBytes: ptr("42949672960"),
+					UsedBytes:  ptr("21474836480"),
+				},
 			},
 		},
 	}
@@ -176,51 +180,52 @@ func TestOapi2ProtoInfo_FullFields(t *testing.T) {
 	info := oapi2ProtoInfo(src)
 
 	assert.Equal(t, "test-vm", info.Name)
-	assert.Equal(t, "STATE_RUNNING", info.State)
-	assert.Equal(t, "aa:bb:cc:dd:ee:ff", info.Hwaddr)
 	assert.Equal(t, "node1", info.Node)
-	assert.Equal(t, "ubuntu-22.04", info.ImageId)
 
-	require.NotNil(t, info.Details)
-	assert.Equal(t, uint32(4), info.Details.Cpus)
-	assert.Equal(t, uint32(2048), info.Details.Memory)
-	assert.Equal(t, uint32(40960), info.Details.Disk)
+	require.NotNil(t, info.Spec)
+	assert.Equal(t, "ubuntu-22.04", info.Spec.Image)
+	require.NotNil(t, info.Spec.Vm)
+	assert.Equal(t, uint32(4), info.Spec.Vm.Cpus)
+	assert.Equal(t, uint32(2048), info.Spec.Vm.Memory)
+	assert.Equal(t, uint32(40960), info.Spec.Vm.Disk)
+	require.NotNil(t, info.Spec.CloudInit)
+	assert.Equal(t, "#cloud-config", info.Spec.CloudInit.Userdata)
+	assert.Equal(t, "version: 2", info.Spec.CloudInit.NetworkConfig)
 
-	require.NotNil(t, info.CloudInit)
-	assert.Equal(t, "#cloud-config", info.CloudInit.Userdata)
-	assert.Equal(t, "version: 2", info.CloudInit.NetworkConfig)
-
-	require.NotNil(t, info.RuntimeInfo)
-	assert.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, info.RuntimeInfo.Ipaddresses)
-
-	require.NotNil(t, info.RuntimeInfo.MemoryStats)
-	assert.Equal(t, uint64(4294967296), info.RuntimeInfo.MemoryStats.TotalMemory)
-
-	require.NotNil(t, info.RuntimeInfo.DiskStats)
-	assert.Equal(t, uint64(42949672960), info.RuntimeInfo.DiskStats.TotalBytes)
+	require.NotNil(t, info.Status)
+	assert.Equal(t, "STATE_RUNNING", info.Status.State)
+	assert.Equal(t, "aa:bb:cc:dd:ee:ff", info.Status.Hwaddr)
+	require.NotNil(t, info.Status.RuntimeInfo)
+	assert.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, info.Status.RuntimeInfo.Ipaddresses)
+	require.NotNil(t, info.Status.RuntimeInfo.MemoryStats)
+	assert.Equal(t, uint64(4294967296), info.Status.RuntimeInfo.MemoryStats.TotalMemory)
+	require.NotNil(t, info.Status.RuntimeInfo.DiskStats)
+	assert.Equal(t, uint64(42949672960), info.Status.RuntimeInfo.DiskStats.TotalBytes)
 }
 
 func TestOapi2ProtoInfo_NilFields(t *testing.T) {
 	info := oapi2ProtoInfo(&cc.ServicesV1Info{})
 
 	assert.Empty(t, info.Name)
-	assert.Nil(t, info.Details)
-	assert.Nil(t, info.CloudInit)
-	assert.Nil(t, info.RuntimeInfo)
+	assert.Nil(t, info.Spec)
+	assert.Nil(t, info.Status)
 }
 
-func TestOapi2ProtoInfo_PartialRuntimeInfo(t *testing.T) {
+func TestOapi2ProtoInfo_PartialStatus(t *testing.T) {
 	info := oapi2ProtoInfo(&cc.ServicesV1Info{
-		RuntimeInfo: &cc.VmRuntimeV1RuntimeInfo{
-			Name: ptr("vm1"),
+		Status: &cc.ServicesV1VMStatus{
+			RuntimeInfo: &cc.VmRuntimeV1RuntimeInfo{
+				Name: ptr("vm1"),
+			},
 		},
 	})
 
-	require.NotNil(t, info.RuntimeInfo)
-	assert.Equal(t, "vm1", info.RuntimeInfo.Name)
-	assert.Empty(t, info.RuntimeInfo.Ipaddresses)
-	assert.Nil(t, info.RuntimeInfo.MemoryStats)
-	assert.Nil(t, info.RuntimeInfo.DiskStats)
+	require.NotNil(t, info.Status)
+	require.NotNil(t, info.Status.RuntimeInfo)
+	assert.Equal(t, "vm1", info.Status.RuntimeInfo.Name)
+	assert.Empty(t, info.Status.RuntimeInfo.Ipaddresses)
+	assert.Nil(t, info.Status.RuntimeInfo.MemoryStats)
+	assert.Nil(t, info.Status.RuntimeInfo.DiskStats)
 }
 
 func TestEnsureImage_SkipsWhenImageExists(t *testing.T) {

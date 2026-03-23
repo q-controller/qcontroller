@@ -42,15 +42,17 @@ message RemoveRequest {
     string name = 1;
 }
 
+message VMStatus {
+    string state = 1;
+    string hwaddr = 2;
+    vm.runtime.v1.RuntimeInfo runtime_info = 3;
+}
+
 message Info {
     string name = 1;
-    settings.v1.VM details = 2;
-    string state = 3;
-    string hwaddr = 4;
-    vm.statemachine.v1.CloudInit cloud_init = 5;
-    vm.runtime.v1.RuntimeInfo runtime_info = 6;
-    string node = 7;
-    string image_id = 8;
+    VMSpec spec = 2;
+    VMStatus status = 3;
+    string node = 4;
 }
 
 message InfoResponse {

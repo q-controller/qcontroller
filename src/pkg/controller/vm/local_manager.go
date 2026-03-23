@@ -213,20 +213,25 @@ func (n *localNodeManager) Info(ctx context.Context, name string) ([]*servicesv1
 }
 
 func (n *localNodeManager) instanceToInfo(inst *vmv1.Instance) *servicesv1.Info {
-	info := &servicesv1.Info{
-		Name:    inst.Id,
-		State:   inst.State.String(),
-		Details: inst.Hardware,
-		Node:    inst.Node,
-		ImageId: inst.ImageId,
+	spec := &servicesv1.VMSpec{
+		Vm:    inst.Hardware,
+		Image: inst.ImageId,
 	}
 	if inst.Cloudinit != nil {
-		info.CloudInit = inst.Cloudinit
+		spec.CloudInit = inst.Cloudinit
+	}
+	status := &servicesv1.VMStatus{
+		State: inst.State.String(),
 	}
 	if inst.Hwaddr != nil {
-		info.Hwaddr = *inst.Hwaddr
+		status.Hwaddr = *inst.Hwaddr
 	}
-	return info
+	return &servicesv1.Info{
+		Name:   inst.Id,
+		Spec:   spec,
+		Status: status,
+		Node:   inst.Node,
+	}
 }
 
 func (n *localNodeManager) batchEnrichWithRuntime(ctx context.Context, infos []*servicesv1.Info, runningIDs []string) {
@@ -247,7 +252,10 @@ func (n *localNodeManager) batchEnrichWithRuntime(ctx context.Context, infos []*
 	}
 	for _, info := range infos {
 		if ri, ok := runtimeByName[info.Name]; ok {
-			info.RuntimeInfo = ri
+			if info.Status == nil {
+				info.Status = &servicesv1.VMStatus{}
+			}
+			info.Status.RuntimeInfo = ri
 		}
 	}
 }
