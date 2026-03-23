@@ -32,6 +32,8 @@ func newLocalNodeManager(name, endpoint string, state controller.State) (node.Ma
 	return nm, nil
 }
 
+func (n *localNodeManager) Close() {}
+
 func (n *localNodeManager) Endpoint() string {
 	return n.endpoint
 }
@@ -231,7 +233,6 @@ func (n *localNodeManager) instanceToInfo(inst *vmv1.Instance) *controllerv1.Inf
 		Name:   inst.Id,
 		Spec:   spec,
 		Status: status,
-		Node:   inst.Node,
 	}
 }
 

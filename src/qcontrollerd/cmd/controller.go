@@ -8,15 +8,12 @@ import (
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
-	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/events"
-	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 var controllerCmd = &cobra.Command{
@@ -48,20 +45,7 @@ var controllerCmd = &cobra.Command{
 			return fmt.Errorf("failed to create event publisher: %w", eventPublisherErr)
 		}
 
-		var localImages images.ImageClient
-		if config.FileRegistryEndpoint != "" {
-			fileRegistryConn, frErr := grpc.NewClient(config.FileRegistryEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			if frErr != nil {
-				return fmt.Errorf("failed to connect to file registry: %w", frErr)
-			}
-			var imgErr error
-			localImages, imgErr = images.CreateImageClient(fileregistryv1.NewFileRegistryServiceClient(fileRegistryConn))
-			if imgErr != nil {
-				return fmt.Errorf("failed to create image client: %w", imgErr)
-			}
-		}
-
-		contr, contrErr := protos.NewController(config, eventPublisher, localImages)
+		contr, contrErr := protos.NewController(config, eventPublisher)
 		if contrErr != nil {
 			return fmt.Errorf("failed to create server %w", contrErr)
 		}

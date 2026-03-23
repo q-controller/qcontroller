@@ -15,4 +15,5 @@ type Manager interface {
 	Stop(ctx context.Context, name string, force bool) error
 	Remove(ctx context.Context, name string) error
 	Info(ctx context.Context, name string) ([]*controllerv1.Info, error)
+	Close()
 }
