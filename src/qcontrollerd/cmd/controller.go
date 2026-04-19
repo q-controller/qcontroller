@@ -8,10 +8,10 @@ import (
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/events"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 )
 
 var controllerCmd = &cobra.Command{
@@ -34,9 +34,12 @@ var controllerCmd = &cobra.Command{
 			return fmt.Errorf("failed to listen: %w", lisErr)
 		}
 
-		s := grpc.NewServer()
+		s, sErr := grpcutil.NewServer(grpcutil.WithTLS(config.Tls))
+		if sErr != nil {
+			return fmt.Errorf("failed to create grpc server: %w", sErr)
+		}
 
-		eventPublisher, eventPublisherErr := events.NewEventPublisher(cmd.Context(), config.EventsEndpoint)
+		eventPublisher, eventPublisherErr := events.NewEventPublisher(cmd.Context(), config.EventsEndpoint, config.EventsTls)
 		if eventPublisherErr != nil {
 			return fmt.Errorf("failed to create event publisher: %w", eventPublisherErr)
 		}

@@ -8,10 +8,10 @@ import (
 
 	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 )
 
 var fileRegistryCmd = &cobra.Command{
@@ -38,11 +38,15 @@ var fileRegistryCmd = &cobra.Command{
 			return fmt.Errorf("failed to listen: %w", lisErr)
 		}
 
-		s := grpc.NewServer()
+		s, sErr := grpcutil.NewServer(grpcutil.WithTLS(config.Tls))
+		if sErr != nil {
+			return fmt.Errorf("failed to create grpc server: %w", sErr)
+		}
 
 		reg, regErr := protos.NewFileRegistry(
 			filepath.Join(config.Root, config.Cache.Root),
 			config.EventsEndpoint,
+			config.EventsTls,
 		)
 		if regErr != nil {
 			return fmt.Errorf("failed to create file registry: %w", regErr)

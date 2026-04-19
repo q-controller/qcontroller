@@ -11,8 +11,8 @@ import (
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -138,8 +138,8 @@ func (p *Publisher) publish(req *eventv1.PublishRequest) (err error) {
 	}
 }
 
-func NewEventPublisher(ctx context.Context, endpoint string) (*Publisher, error) {
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func NewEventPublisher(ctx context.Context, endpoint string, tlsCfg *settingsv1.TLSConfig) (*Publisher, error) {
+	conn, err := grpcutil.Dial(endpoint, grpcutil.WithTLS(tlsCfg))
 	if err != nil {
 		return nil, fmt.Errorf("did not connect: %w", err)
 	}

@@ -4,6 +4,12 @@ package settings.v1;
 
 option go_package = "github.com/q-controller/qcontroller/src/generated/settings/v1;v1";
 
+message TLSConfig {
+    string ca = 1;
+    string cert = 2;
+    string key = 3;
+}
+
 message VM {
     uint32 cpus = 1;
     uint32 memory = 2;
@@ -85,6 +91,9 @@ message Node {
     string endpoint = 2;
     string file_registry_endpoint = 3;
     string events_endpoint = 4;
+    TLSConfig controller_tls = 5;
+    TLSConfig file_registry_tls = 6;
+    TLSConfig events_tls = 7;
 }
 
 message ControllerConfig {
@@ -92,6 +101,9 @@ message ControllerConfig {
     string root = 2;
     Node local = 3;
     string events_endpoint = 4;
+    TLSConfig tls = 5;
+    TLSConfig qemu_tls = 6;
+    TLSConfig events_tls = 7;
 }
 
 message QemuConfig {
@@ -105,10 +117,13 @@ message QemuConfig {
     }
 
     string file_registry_endpoint = 6;
+    TLSConfig tls = 7;
+    TLSConfig file_registry_tls = 8;
 }
 
 message EventServiceConfig {
     uint32 port = 1;
+    TLSConfig tls = 2;
 }
 
 message OrchestratorConfig {
@@ -116,6 +131,7 @@ message OrchestratorConfig {
     repeated Node nodes = 3;
     string file_registry_endpoint = 4;
     bool expose_swagger_ui = 5;
+    TLSConfig file_registry_tls = 6;
 }
 
 message FileRegistryConfig {
@@ -123,4 +139,6 @@ message FileRegistryConfig {
     Cache cache = 2;
     string root = 3;
     string events_endpoint = 4;
+    TLSConfig tls = 5;
+    TLSConfig events_tls = 6;
 }

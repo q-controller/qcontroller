@@ -28,12 +28,12 @@ type Manager struct {
 	eventsPublisher *events.Publisher
 }
 
-func newManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher) (*Manager, error) {
+func newManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher, qemuTls *settingsv1.TLSConfig) (*Manager, error) {
 	if local == nil {
 		return nil, fmt.Errorf("local node must be configured")
 	}
 
-	nm, nmErr := newLocalNodeManager(local.Name, local.Endpoint, state)
+	nm, nmErr := newLocalNodeManager(local.Name, local.Endpoint, state, qemuTls)
 	if nmErr != nil {
 		return nil, nmErr
 	}
@@ -109,9 +109,9 @@ func (m *Manager) Close() {
 var singleton *Manager
 var once sync.Once
 
-func CreateManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher) *Manager {
+func CreateManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher, qemuTls *settingsv1.TLSConfig) *Manager {
 	once.Do(func() {
-		mgr, mgrErr := newManager(local, state, eventPublisher)
+		mgr, mgrErr := newManager(local, state, eventPublisher, qemuTls)
 		if mgrErr != nil {
 			slog.Error("failed to create VM manager", "error", mgrErr)
 		}

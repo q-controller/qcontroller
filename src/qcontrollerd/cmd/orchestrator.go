@@ -14,14 +14,13 @@ import (
 	orchestratorv1 "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/frontend"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/orchestrator"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	qUtils "github.com/q-controller/qcontroller/src/qcontrollerd/cmd/utils"
 	"github.com/spf13/cobra"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -52,7 +51,7 @@ var orchestratorCmd = &cobra.Command{
 		go bc.Run(ctx)
 
 		// Connect to the orchestrator's own file registry.
-		frConn, frErr := grpc.NewClient(config.FileRegistryEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		frConn, frErr := grpcutil.Dial(config.FileRegistryEndpoint, grpcutil.WithTLS(config.FileRegistryTls))
 		if frErr != nil {
 			return fmt.Errorf("failed to connect to file registry: %w", frErr)
 		}
@@ -72,7 +71,7 @@ var orchestratorCmd = &cobra.Command{
 
 		// Subscribe to each node's EventService.
 		for _, n := range config.Nodes {
-			go subscribeToNodeEvents(ctx, n.Name, n.Endpoint, n.EventsEndpoint, bc)
+			go subscribeToNodeEvents(ctx, n, bc)
 		}
 
 		// gRPC-gateway: REST API (in-process, no network hop).

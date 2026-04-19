@@ -13,10 +13,10 @@ import (
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/node"
 	"github.com/q-controller/qemu-client/pkg/utils"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // localNodeManager implements NodeManager for the local node.
@@ -25,10 +25,11 @@ type localNodeManager struct {
 	name     string
 	endpoint string
 	state    controller.State
+	tlsCfg   *settingsv1.TLSConfig
 }
 
-func newLocalNodeManager(name, endpoint string, state controller.State) (node.Manager, error) {
-	nm := &localNodeManager{name: name, endpoint: endpoint, state: state}
+func newLocalNodeManager(name, endpoint string, state controller.State, tlsCfg *settingsv1.TLSConfig) (node.Manager, error) {
+	nm := &localNodeManager{name: name, endpoint: endpoint, state: state, tlsCfg: tlsCfg}
 	return nm, nil
 }
 
@@ -39,7 +40,7 @@ func (n *localNodeManager) Endpoint() string {
 }
 
 func (n *localNodeManager) dial() (*grpc.ClientConn, error) {
-	return grpc.NewClient(n.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	return grpcutil.Dial(n.endpoint, grpcutil.WithTLS(n.tlsCfg))
 }
 
 func (n *localNodeManager) qemuList(ctx context.Context) ([]string, error) {
