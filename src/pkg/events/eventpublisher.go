@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
@@ -18,7 +17,6 @@ import (
 
 type Publisher struct {
 	ch    chan<- *eventv1.PublishRequest
-	done  atomic.Bool
 	mu    sync.Mutex
 	cache map[string]*controllerv1.Info
 }
@@ -125,11 +123,7 @@ func (p *Publisher) PublishError(message, resource string) error {
 	return p.publish(&eventv1.PublishRequest{Update: update})
 }
 
-func (p *Publisher) publish(req *eventv1.PublishRequest) (err error) {
-	if p.done.Load() {
-		return fmt.Errorf("publisher is closed")
-	}
-
+func (p *Publisher) publish(req *eventv1.PublishRequest) error {
 	select {
 	case p.ch <- req:
 		return nil
@@ -148,11 +142,7 @@ func NewEventPublisher(ctx context.Context, endpoint string, tlsCfg *settingsv1.
 	publisher := &Publisher{ch: events, cache: make(map[string]*controllerv1.Info)}
 
 	go func() {
-		defer func() {
-			publisher.done.Store(true)
-			close(events)
-			_ = conn.Close()
-		}()
+		defer func() { _ = conn.Close() }()
 
 		cli := eventv1.NewEventServiceClient(conn)
 
