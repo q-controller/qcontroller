@@ -15,7 +15,7 @@ MACOS_MODE=MODE_SHARED
 CONTROLLER_PORT=8009
 QEMU_PORT=8008
 ORCHESTRATOR_HTTP_PORT=8080
-ORCHESTRATOR_GRPC_PORT=8081
+EVENTSERVICE_PORT=8011
 FILEREGISTRY_PORT=8010
 REGISTRY_ADDRESS=""
 QCONTROLLERD=""
@@ -228,7 +228,8 @@ cat >${CONFIGDIR}/controller-config.json <<EOF
 {
     "port": ${CONTROLLER_PORT},
     "root": "${ROOTDIR}",
-    "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"}
+    "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"},
+    "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"
 }
 EOF
 
@@ -239,21 +240,34 @@ cat >${CONFIGDIR}/fileregistry-config.json <<EOF
         "root": "cache"
     },
     "root": "${ROOTDIR}",
-    "eventsEndpoint": "localhost:${CONTROLLER_PORT}"
+    "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"
 }
 EOF
 
 cat >${CONFIGDIR}/orchestrator-config.json <<EOF
 {
     "port": ${ORCHESTRATOR_HTTP_PORT},
-    "grpcPort": ${ORCHESTRATOR_GRPC_PORT},
     "nodes": [
-        {"name": "local", "endpoint": "localhost:${CONTROLLER_PORT}", "fileRegistryEndpoint": "${REGISTRY_ADDRESS}"}
+        {"name": "local", "endpoint": "localhost:${CONTROLLER_PORT}", "fileRegistryEndpoint": "${REGISTRY_ADDRESS}", "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"}
     ],
     "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
     "exposeSwaggerUi": true
 }
 EOF
+
+cat >${CONFIGDIR}/eventservice-config.json <<EOF
+{
+    "port": ${EVENTSERVICE_PORT}
+}
+EOF
+
+touch ${LOGDIR}/eventservice.out
+touch ${LOGDIR}/eventservice.err
+${QCONTROLLERD} eventservice -c ${CONFIGDIR}/eventservice-config.json >${LOGDIR}/eventservice.out 2>${LOGDIR}/eventservice.err &
+pids+=($!)
+
+# Wait until eventservice is ready
+sleep 1
 
 touch ${LOGDIR}/fileregistry.out
 touch ${LOGDIR}/fileregistry.err

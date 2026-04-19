@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -73,27 +72,12 @@ var orchestratorCmd = &cobra.Command{
 
 		// Subscribe to each node's EventService.
 		for _, n := range config.Nodes {
-			go subscribeToNodeEvents(ctx, n.Name, n.Endpoint, bc)
+			go subscribeToNodeEvents(ctx, n.Name, n.Endpoint, n.EventsEndpoint, bc)
 		}
 
-		// gRPC server for OrchestratorService (used by gRPC-gateway).
-		orchLis, orchLisErr := net.Listen("tcp", fmt.Sprintf(":%d", config.GrpcPort))
-		if orchLisErr != nil {
-			return fmt.Errorf("failed to listen: %w", orchLisErr)
-		}
-		orchGrpcServer := grpc.NewServer()
-		orchestratorv1.RegisterOrchestratorServiceServer(orchGrpcServer, orchServer)
-		go func() {
-			if err := orchGrpcServer.Serve(orchLis); err != nil {
-				slog.Error("gRPC server failed", "error", err)
-			}
-		}()
-
-		// gRPC-gateway: REST API.
+		// gRPC-gateway: REST API (in-process, no network hop).
 		mux := runtime.NewServeMux()
-		grpcAddr := orchLis.Addr().String()
-		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-		if err := orchestratorv1.RegisterOrchestratorServiceHandlerFromEndpoint(ctx, mux, grpcAddr, opts); err != nil {
+		if err := orchestratorv1.RegisterOrchestratorServiceHandlerServer(ctx, mux, orchServer); err != nil {
 			return fmt.Errorf("failed to register orchestrator gateway: %w", err)
 		}
 
@@ -136,7 +120,6 @@ var orchestratorCmd = &cobra.Command{
 
 		go func() {
 			<-ctx.Done()
-			orchGrpcServer.GracefulStop()
 			_ = httpServer.Close()
 		}()
 

@@ -98,15 +98,8 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *Manager) Info(_ context.Context, id string) ([]*controllerv1.Info, error) {
-	if id != "" {
-		info := m.eventsPublisher.Get(id)
-		if info == nil {
-			return nil, fmt.Errorf("instance %s not found", id)
-		}
-		return []*controllerv1.Info{info}, nil
-	}
-	return m.eventsPublisher.GetAll(), nil
+func (m *Manager) Info(ctx context.Context, id string) ([]*controllerv1.Info, error) {
+	return m.nm.Info(ctx, id)
 }
 
 func (m *Manager) Close() {

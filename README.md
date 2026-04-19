@@ -15,7 +15,7 @@
 
 Operations are defined using [Protocol Buffers](/src/protos/) and exposed via both **gRPC** and a **RESTful HTTP gateway**, making integration with scripts, dashboards, or automation frameworks straightforward.
 
-The architecture separates node-level services from multi-node coordination. Each node runs `qemu`, `fileregistry`, and `controller` — all communicating via gRPC on localhost. The `orchestrator` sits on top, providing a unified REST API, WebSocket event streaming, image distribution, and the web UI. This is the same architecture regardless of the number of nodes — even a single-node setup runs through the orchestrator.
+The architecture separates node-level services from multi-node coordination. Each node runs `qemu`, `fileregistry`, `eventservice`, and `controller` — all communicating via gRPC on localhost. The `orchestrator` sits on top, providing a unified REST API, WebSocket event streaming, image distribution, and the web UI. This is the same architecture regardless of the number of nodes — even a single-node setup runs through the orchestrator.
 
 ---
 
@@ -81,15 +81,16 @@ make
 The compiled binary provides the following subcommands:
 
 * `qemu` – Manages VM process execution. Requires root for networking (TAP on Linux, vmnet on macOS).
-* `controller` – Manages VM lifecycle on the local node. Polls QemuService for state changes and exposes them via gRPC (ControllerService + EventService).
-* `orchestrator` – Coordinates multiple nodes. Subscribes to each node's EventService, aggregates state, distributes images, and serves the REST API, WebSocket event stream, Swagger UI, and web frontend via gRPC-gateway.
+* `controller` – Manages VM lifecycle on the local node. Polls QemuService for state changes and publishes them to the event service via gRPC.
+* `eventservice` – Standalone pub/sub hub for VM and image events. Controllers and file registries publish events to it; the orchestrator subscribes.
+* `orchestrator` – Coordinates multiple nodes. Subscribes to each node's event service, aggregates state, distributes images, and serves the REST API, WebSocket event stream, Swagger UI, and web frontend via gRPC-gateway.
 * `fileregistry` – Manages VM image storage. Provides chunked upload/download via gRPC. Runs on each node and on the orchestrator.
 
 > **Separation of Controller and QEMU**:
 > The qemu service requires elevated privileges for networking (TAP/vmnet). To avoid granting root to the entire application, it runs as a separate process. The controller and other services run as non-root users.
 
 > **Architecture**:
-> Each node runs `qemu`, `fileregistry`, and `controller` — all communicating via gRPC on localhost. The orchestrator connects to each node's controller and event service via gRPC. Images are uploaded to the orchestrator and automatically pushed to nodes on demand. The same setup works for one node or many.
+> Each node runs `qemu`, `fileregistry`, `eventservice`, and `controller` — all communicating via gRPC on localhost. The orchestrator connects to each node's controller, file registry, and event service via gRPC. Images are uploaded to the orchestrator and automatically pushed to nodes on demand. The same setup works for one node or many.
 
 ### Running the App
 
@@ -116,7 +117,8 @@ For multi-node setups with overlay networking, see the helper scripts:
 - [`setup-overlay.sh`](/setup-overlay.sh) — adds/removes nft forwarding rules between the QEMU bridge and the overlay interface
 
 Default service ports:
-- orchestrator: `http://localhost:8080` (HTTP) / `localhost:8081` (gRPC, internal)
+- orchestrator: `http://localhost:8080` (HTTP)
+- eventservice: `localhost:8011` (gRPC)
 - controller: `localhost:8009` (gRPC)
 - qemu: `localhost:8008` (gRPC)
 - fileregistry: `localhost:8010` (gRPC)
