@@ -38,6 +38,7 @@ The architecture separates node-level services from multi-node coordination. Eac
 - **Real-time event streaming**: Live VM state changes via WebSocket at `/ws`, aggregated from all nodes by the orchestrator.
 - **Automatic image distribution**: Orchestrator pushes images to remote nodes before VM creation.
 - 📜 **Auto-generated OpenAPI schema**: Serves interactive API docs using [http-swagger](https://github.com/swaggo/http-swagger).
+- 🔒 **Optional mTLS and HTTPS**: gRPC services can run with mutual TLS, and the orchestrator can serve HTTPS — all opt-in via config.
 - 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
 
 ---
@@ -108,9 +109,9 @@ A startup script is provided for running all services together during developmen
 ./start.sh --rundir /tmp/qcontroller --bin ./build/qcontrollerd
 ```
 
-Run `./start.sh --help` for full usage details (interface, CIDR, DHCP range, macOS mode).
+Run `./start.sh --help` for full usage details (interface, CIDR, DHCP range, macOS mode, certs).
 
-To add remote nodes, edit the `nodes` array in the orchestrator config. Each node entry needs a `name`, `endpoint` (the node's controller gRPC address), and `fileRegistryEndpoint` (the node's file registry gRPC address).
+To add remote nodes, edit the `nodes` array in the orchestrator config. Each node entry needs a `name`, `endpoint` (the node's controller gRPC address), `fileRegistryEndpoint`, and `eventsEndpoint` (the node's event service gRPC address).
 
 For multi-node setups with overlay networking, see the helper scripts:
 - [`setup-nebula.sh`](/setup-nebula.sh) — generates Nebula CA, certificates, and configs for two nodes
@@ -128,6 +129,49 @@ Then access the interfaces:
 - Swagger UI: `http://localhost:8080/v1/swagger/index.html`
 
 <img src="./swagger.png" alt="swagger UI snapshot" width="900"/>
+
+## 🔒 TLS
+
+Every gRPC service and the orchestrator's HTTP server accept an optional `tls` block pointing at a CA certificate, server certificate, and private key. When present, gRPC servers enforce **mTLS** (TLS 1.3, client cert verified against the CA) and the orchestrator serves **HTTPS**. When absent, services run plaintext — useful for inside a trusted cluster where a service mesh or ingress already handles encryption.
+
+Example `tls` block:
+
+```json
+"tls": {
+    "ca":   "/path/to/ca.pem",
+    "cert": "/path/to/service.pem",
+    "key":  "/path/to/service-key.pem"
+}
+```
+
+Client-side TLS is configured per outbound connection. For example, a controller config dialing qemu and the event service:
+
+```json
+"qemuTls":   { "ca": "...", "cert": "...", "key": "..." },
+"eventsTls": { "ca": "...", "cert": "...", "key": "..." }
+```
+
+`Node` entries in the orchestrator config follow the same pattern with `controllerTls`, `fileRegistryTls`, and `eventsTls` fields.
+
+### Dev setup with `--certs`
+
+For local development, `start.sh` can generate a self-signed CA and per-service certificates automatically:
+
+```shell
+./start.sh --rundir ./build/run --bin ./build/qcontrollerd --certs
+```
+
+This generates a CA plus per-service certs (`qemu`, `controller`, `fileregistry`, `eventservice`, `orchestrator`) under `<rundir>/certs/` and injects `tls` blocks into every config. SANs match each server's actual dialed address (bridge IP for qemu, host IP for fileregistry on Linux; `localhost` on macOS).
+
+With `--certs` enabled, the web UI is at `https://localhost:8080/ui/`. Call the REST API with:
+
+```shell
+curl --cacert ./build/run/certs/ca.pem https://localhost:8080/v1/nodes
+```
+
+### Production
+
+`--certs` is strictly for development. In production, use a proper PKI (internal CA, Let's Encrypt, or cert-manager in Kubernetes) and point the `tls` blocks at those certs.
 
 ## Example Base Image
 
@@ -160,6 +204,8 @@ For real-time VM state updates, connect to the WebSocket endpoint:
 ```shell
 ws://localhost:8080/ws
 ```
+
+When the orchestrator is configured with TLS, use `https://` and `wss://` instead.
 
 All REST endpoints follow the schema defined in [/src/protos/](/src/protos/). WebSocket messages use Protocol Buffers for efficient binary communication.
 
