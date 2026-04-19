@@ -16,6 +16,7 @@ import (
 
 type Server struct {
 	orchestratorv1.UnimplementedOrchestratorServiceServer
+	stop        chan struct{}
 	nodes       map[string]node.Manager
 	localImages images.ImageClient
 	broadcaster *Broadcaster
@@ -32,10 +33,28 @@ func NewServer(nodes []*settingsv1.Node, localImages images.ImageClient, bc *Bro
 	}
 
 	return &Server{
+		stop:        make(chan struct{}),
 		nodes:       nodeMap,
 		localImages: localImages,
 		broadcaster: bc,
 	}, nil
+}
+
+// asyncCtx returns a context that is canceled when the server is stopped
+// (via s.stop) or when the caller explicitly cancels it.
+func (s *Server) asyncCtx() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		select {
+		case <-s.stop:
+			cancel()
+		case <-ctx.Done():
+			// Context was canceled externally. Nothing more to do.
+		}
+	}()
+
+	return ctx, cancel
 }
 
 func (s *Server) getNode(name string) (string, node.Manager, error) {
@@ -61,7 +80,9 @@ func (s *Server) Create(ctx context.Context, req *orchestratorv1.CreateRequest) 
 
 	if req.Start {
 		go func() {
-			if startErr := nm.Start(context.Background(), req.Name); startErr != nil {
+			asyncCtx, cancel := s.asyncCtx()
+			defer cancel()
+			if startErr := nm.Start(asyncCtx, req.Name); startErr != nil {
 				slog.Error("failed to start after create", "error", startErr)
 				s.broadcaster.Send(&orchestratorv1.Event{
 					Node: nodeName,
@@ -81,14 +102,16 @@ func (s *Server) Create(ctx context.Context, req *orchestratorv1.CreateRequest) 
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Start(ctx context.Context, req *orchestratorv1.StartRequest) (*emptypb.Empty, error) {
+func (s *Server) Start(_ context.Context, req *orchestratorv1.StartRequest) (*emptypb.Empty, error) {
 	_, nm, err := s.getNode(req.Node)
 	if err != nil {
 		return nil, err
 	}
 
 	go func() {
-		if startErr := nm.Start(context.Background(), req.Name); startErr != nil {
+		asyncCtx, cancel := s.asyncCtx()
+		defer cancel()
+		if startErr := nm.Start(asyncCtx, req.Name); startErr != nil {
 			slog.Error("Start failed", "node", req.Node, "name", req.Name, "error", startErr)
 			s.broadcaster.Send(&orchestratorv1.Event{
 				Node: req.Node,
@@ -156,6 +179,7 @@ func (s *Server) Info(ctx context.Context, req *orchestratorv1.InfoRequest) (*or
 }
 
 func (s *Server) Close() {
+	close(s.stop)
 	for _, nm := range s.nodes {
 		nm.Close()
 	}
