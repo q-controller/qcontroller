@@ -14,16 +14,23 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func subscribeToNodeEvents(ctx context.Context, nodeName, endpoint string, bc *orchestrator.Broadcaster) {
-	conn, connErr := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if connErr != nil {
-		slog.Error("Failed to connect to node", "node", nodeName, "error", connErr)
+func subscribeToNodeEvents(ctx context.Context, nodeName, controllerEndpoint, eventsEndpoint string, bc *orchestrator.Broadcaster) {
+	controllerConn, controllerConnErr := grpc.NewClient(controllerEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if controllerConnErr != nil {
+		slog.Error("Failed to connect to controller", "node", nodeName, "error", controllerConnErr)
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = controllerConn.Close() }()
 
-	eventCli := eventv1.NewEventServiceClient(conn)
-	controllerCli := controllerv1.NewControllerServiceClient(conn)
+	eventsConn, eventsConnErr := grpc.NewClient(eventsEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if eventsConnErr != nil {
+		slog.Error("Failed to connect to event service", "node", nodeName, "error", eventsConnErr)
+		return
+	}
+	defer func() { _ = eventsConn.Close() }()
+
+	eventCli := eventv1.NewEventServiceClient(eventsConn)
+	controllerCli := controllerv1.NewControllerServiceClient(controllerConn)
 
 	for {
 		select {
@@ -46,7 +53,7 @@ func subscribeToNodeEvents(ctx context.Context, nodeName, endpoint string, bc *o
 			continue
 		}
 
-		slog.Info("Subscribed to node events", "node", nodeName, "endpoint", endpoint)
+		slog.Info("Subscribed to node events", "node", nodeName, "endpoint", eventsEndpoint)
 
 		for {
 			resp, recvErr := stream.Recv()

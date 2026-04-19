@@ -84,12 +84,14 @@ message Node {
     string name = 1;
     string endpoint = 2;
     string file_registry_endpoint = 3;
+    string events_endpoint = 4;
 }
 
 message ControllerConfig {
     uint32 port = 1;
     string root = 2;
     Node local = 3;
+    string events_endpoint = 4;
 }
 
 message QemuConfig {
@@ -105,9 +107,12 @@ message QemuConfig {
     string file_registry_endpoint = 6;
 }
 
+message EventServiceConfig {
+    uint32 port = 1;
+}
+
 message OrchestratorConfig {
     uint32 port = 1;
-    uint32 grpc_port = 2;
     repeated Node nodes = 3;
     string file_registry_endpoint = 4;
     bool expose_swagger_ui = 5;

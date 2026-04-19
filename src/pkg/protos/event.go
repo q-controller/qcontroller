@@ -38,6 +38,33 @@ func (s *EventServer) Subscribe(req *v1.SubscribeRequest, srv grpc.ServerStreami
 	return nil
 }
 
+// Broadcast sends an update to all connected subscribers.
+func (s *EventServer) Broadcast(update *v1.Update) {
+	s.mu.RLock()
+	subs := make([]grpc.ServerStreamingServer[v1.SubscribeResponse], 0, len(s.subscribers))
+	for sub := range s.subscribers {
+		subs = append(subs, sub)
+	}
+	s.mu.RUnlock()
+
+	var failedSubs []grpc.ServerStreamingServer[v1.SubscribeResponse]
+	for _, sub := range subs {
+		if err := sub.Send(&v1.SubscribeResponse{
+			Update: update,
+		}); err != nil {
+			failedSubs = append(failedSubs, sub)
+		}
+	}
+
+	if len(failedSubs) > 0 {
+		s.mu.Lock()
+		for _, sub := range failedSubs {
+			delete(s.subscribers, sub)
+		}
+		s.mu.Unlock()
+	}
+}
+
 func (s *EventServer) Publish(srv grpc.ClientStreamingServer[v1.PublishRequest, v1.PublishResponse]) error {
 	for {
 		msg, recvErr := srv.Recv()
@@ -48,36 +75,9 @@ func (s *EventServer) Publish(srv grpc.ClientStreamingServer[v1.PublishRequest, 
 			return recvErr
 		}
 
-		// Broadcast to all subscribers
-		s.mu.RLock()
-		// Make a copy to avoid holding lock during sends
-		subs := make([]grpc.ServerStreamingServer[v1.SubscribeResponse], 0, len(s.subscribers))
-		for sub := range s.subscribers {
-			subs = append(subs, sub)
-		}
-		s.mu.RUnlock()
-
-		// Track failed subscribers to remove them in batch
-		var failedSubs []grpc.ServerStreamingServer[v1.SubscribeResponse]
-		for _, sub := range subs {
-			if err := sub.Send(&v1.SubscribeResponse{
-				Update: msg.Update,
-			}); err != nil {
-				failedSubs = append(failedSubs, sub)
-			}
-		}
-
-		// Remove failed subscribers in batch
-		if len(failedSubs) > 0 {
-			s.mu.Lock()
-			for _, sub := range failedSubs {
-				delete(s.subscribers, sub)
-			}
-			s.mu.Unlock()
-		}
+		s.Broadcast(msg.Update)
 	}
 
-	// Send an empty response
 	if sendErr := srv.SendAndClose(&v1.PublishResponse{}); sendErr != nil {
 		return sendErr
 	}
