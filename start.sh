@@ -20,6 +20,8 @@ FILEREGISTRY_PORT=8010
 REGISTRY_ADDRESS=""
 QCONTROLLERD=""
 RUNDIR=""
+USE_CERTS="false"
+CERTDIR=""
 pids=()
 
 OS_TYPE="$(uname -s)"
@@ -42,6 +44,7 @@ Available options:
 --start            Start of DHCP/IP range in CIDR notation [default: ${START}] (both platforms)
 --end              End of DHCP/IP range in CIDR notation [default: ${END}] (both platforms)
 --macos-mode       macOS network mode: MODE_BRIDGED or MODE_SHARED [default: ${MACOS_MODE}]
+--certs            Generate a local CA and per-service certs, enabling mTLS for all gRPC
 EOF
     exit
 }
@@ -96,6 +99,9 @@ parse_params() {
                 RUNDIR="${2-}"
                 shift
                 ;;
+            --certs)
+                USE_CERTS="true"
+                ;;
             -?*) die "Unknown option: $1" ;;
             *) break ;;
         esac
@@ -134,10 +140,58 @@ parse_params "$@"
 LOGDIR=${RUNDIR}/logs
 ROOTDIR=${RUNDIR}/root
 CONFIGDIR=${RUNDIR}/configs
+CERTDIR=${RUNDIR}/certs
 
 mkdir -p ${CONFIGDIR}
 mkdir -p ${ROOTDIR}
 mkdir -p ${LOGDIR}
+
+gen_cert() {
+    local name=$1
+    local sans=$2
+    openssl genrsa -out "${CERTDIR}/${name}-key.pem" 2048 2>/dev/null
+    openssl req -new -key "${CERTDIR}/${name}-key.pem" \
+        -out "${CERTDIR}/${name}.csr" -subj "/CN=${name}" 2>/dev/null
+    openssl x509 -req -in "${CERTDIR}/${name}.csr" \
+        -CA "${CERTDIR}/ca.pem" -CAkey "${CERTDIR}/ca-key.pem" \
+        -CAcreateserial -out "${CERTDIR}/${name}.pem" \
+        -days 365 -sha256 \
+        -extfile <(printf "subjectAltName=%s\nextendedKeyUsage=serverAuth,clientAuth" "${sans}") \
+        2>/dev/null
+    rm -f "${CERTDIR}/${name}.csr"
+}
+
+if [[ "${USE_CERTS}" == "true" ]]; then
+    mkdir -p "${CERTDIR}"
+    openssl genrsa -out "${CERTDIR}/ca-key.pem" 4096 2>/dev/null
+    openssl req -new -x509 -days 365 -key "${CERTDIR}/ca-key.pem" \
+        -out "${CERTDIR}/ca.pem" -subj "/CN=qcontroller-ca" 2>/dev/null
+
+    # SANs match the address each server is actually dialed at.
+    if [[ "$OS_TYPE" == "Linux" ]]; then
+        HOST_IP_ONLY=$(echo "${HOST_IP}" | cut -d'/' -f1)
+        BRIDGE_IP_ONLY=$(echo "${BRIDGE_IP}" | cut -d'/' -f1)
+        QEMU_SANS="IP:${BRIDGE_IP_ONLY}"
+        FILEREGISTRY_SANS="IP:${HOST_IP_ONLY}"
+    else
+        QEMU_SANS="DNS:localhost,IP:127.0.0.1"
+        FILEREGISTRY_SANS="DNS:localhost,IP:127.0.0.1"
+    fi
+    LOCAL_SANS="DNS:localhost,IP:127.0.0.1"
+
+    gen_cert qemu "${QEMU_SANS}"
+    gen_cert fileregistry "${FILEREGISTRY_SANS}"
+    gen_cert controller "${LOCAL_SANS}"
+    gen_cert eventservice "${LOCAL_SANS}"
+    gen_cert orchestrator "${LOCAL_SANS}"
+fi
+
+tls_block() {
+    local field=$1
+    local name=$2
+    [[ "${USE_CERTS}" == "true" ]] || return 0
+    echo ",\"${field}\": {\"ca\": \"${CERTDIR}/ca.pem\", \"cert\": \"${CERTDIR}/${name}.pem\", \"key\": \"${CERTDIR}/${name}-key.pem\"}"
+}
 
 if [[ "$OS_TYPE" == "Linux" ]]; then
 cat >${CONFIGDIR}/qemu-config.json <<EOF
@@ -163,7 +217,7 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
                 }
             }
         }
-    }
+    }$(tls_block tls qemu)$(tls_block fileRegistryTls qemu)
 }
 EOF
 elif [[ "${MACOS_MODE}" == "MODE_BRIDGED" ]]; then
@@ -180,7 +234,7 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
         "dns": {
             "zone": "."
         }
-    }
+    }$(tls_block tls qemu)$(tls_block fileRegistryTls qemu)
 }
 EOF
 else
@@ -214,7 +268,7 @@ cat >${CONFIGDIR}/qemu-config.json <<EOF
         "dns": {
             "zone": "."
         }
-    }
+    }$(tls_block tls qemu)$(tls_block fileRegistryTls qemu)
 }
 EOF
 fi
@@ -229,7 +283,7 @@ cat >${CONFIGDIR}/controller-config.json <<EOF
     "port": ${CONTROLLER_PORT},
     "root": "${ROOTDIR}",
     "local": {"name": "local", "endpoint": "${QEMU_HOST}:${QEMU_PORT}"},
-    "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"
+    "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"$(tls_block tls controller)$(tls_block qemuTls controller)$(tls_block eventsTls controller)
 }
 EOF
 
@@ -240,7 +294,7 @@ cat >${CONFIGDIR}/fileregistry-config.json <<EOF
         "root": "cache"
     },
     "root": "${ROOTDIR}",
-    "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"
+    "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"$(tls_block tls fileregistry)$(tls_block eventsTls fileregistry)
 }
 EOF
 
@@ -248,16 +302,16 @@ cat >${CONFIGDIR}/orchestrator-config.json <<EOF
 {
     "port": ${ORCHESTRATOR_HTTP_PORT},
     "nodes": [
-        {"name": "local", "endpoint": "localhost:${CONTROLLER_PORT}", "fileRegistryEndpoint": "${REGISTRY_ADDRESS}", "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"}
+        {"name": "local", "endpoint": "localhost:${CONTROLLER_PORT}", "fileRegistryEndpoint": "${REGISTRY_ADDRESS}", "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"$(tls_block controllerTls orchestrator)$(tls_block fileRegistryTls orchestrator)$(tls_block eventsTls orchestrator)}
     ],
     "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
-    "exposeSwaggerUi": true
+    "exposeSwaggerUi": true$(tls_block fileRegistryTls orchestrator)$(tls_block tls orchestrator)
 }
 EOF
 
 cat >${CONFIGDIR}/eventservice-config.json <<EOF
 {
-    "port": ${EVENTSERVICE_PORT}
+    "port": ${EVENTSERVICE_PORT}$(tls_block tls eventservice)
 }
 EOF
 
