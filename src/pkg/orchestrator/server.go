@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	orchestratorv1 "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1"
@@ -17,6 +18,7 @@ import (
 type Server struct {
 	orchestratorv1.UnimplementedOrchestratorServiceServer
 	stop        chan struct{}
+	stopOnce    sync.Once
 	nodes       map[string]node.Manager
 	localImages images.ImageClient
 	broadcaster *Broadcaster
@@ -179,7 +181,7 @@ func (s *Server) Info(ctx context.Context, req *orchestratorv1.InfoRequest) (*or
 }
 
 func (s *Server) Close() {
-	close(s.stop)
+	s.stopOnce.Do(func() { close(s.stop) })
 	for _, nm := range s.nodes {
 		nm.Close()
 	}
