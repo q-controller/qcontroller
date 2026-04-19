@@ -12,6 +12,7 @@ import (
 
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
+	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/images/storage"
 	"google.golang.org/grpc"
@@ -216,7 +217,7 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *fileregistryv1.ListI
 	return resp, nil
 }
 
-func NewFileRegistry(root, eventsEndpoint string) (fileregistryv1.FileRegistryServiceServer, error) {
+func NewFileRegistry(root, eventsEndpoint string, eventsTls *settingsv1.TLSConfig) (fileregistryv1.FileRegistryServiceServer, error) {
 	// Create temp directory
 	tempDir, pathErr := os.MkdirTemp("", "fileregistry-*")
 	if pathErr != nil {
@@ -230,7 +231,7 @@ func NewFileRegistry(root, eventsEndpoint string) (fileregistryv1.FileRegistrySe
 		return nil, fmt.Errorf("failed to create storage backend: %w", storageErr)
 	}
 
-	eventPublisher, eventPublisherErr := events.NewEventPublisher(context.Background(), eventsEndpoint)
+	eventPublisher, eventPublisherErr := events.NewEventPublisher(context.Background(), eventsEndpoint, eventsTls)
 	if eventPublisherErr != nil {
 		return nil, fmt.Errorf("failed to create event publisher: %w", eventPublisherErr)
 	}

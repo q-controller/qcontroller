@@ -9,22 +9,22 @@ import (
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	orchestratorv1 "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1"
+	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/orchestrator"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
-func subscribeToNodeEvents(ctx context.Context, nodeName, controllerEndpoint, eventsEndpoint string, bc *orchestrator.Broadcaster) {
-	controllerConn, controllerConnErr := grpc.NewClient(controllerEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func subscribeToNodeEvents(ctx context.Context, n *settingsv1.Node, bc *orchestrator.Broadcaster) {
+	controllerConn, controllerConnErr := grpcutil.Dial(n.Endpoint, grpcutil.WithTLS(n.ControllerTls))
 	if controllerConnErr != nil {
-		slog.Error("Failed to connect to controller", "node", nodeName, "error", controllerConnErr)
+		slog.Error("Failed to connect to controller", "node", n.Name, "error", controllerConnErr)
 		return
 	}
 	defer func() { _ = controllerConn.Close() }()
 
-	eventsConn, eventsConnErr := grpc.NewClient(eventsEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	eventsConn, eventsConnErr := grpcutil.Dial(n.EventsEndpoint, grpcutil.WithTLS(n.EventsTls))
 	if eventsConnErr != nil {
-		slog.Error("Failed to connect to event service", "node", nodeName, "error", eventsConnErr)
+		slog.Error("Failed to connect to event service", "node", n.Name, "error", eventsConnErr)
 		return
 	}
 	defer func() { _ = eventsConn.Close() }()
@@ -40,11 +40,11 @@ func subscribeToNodeEvents(ctx context.Context, nodeName, controllerEndpoint, ev
 		}
 
 		// Seed initial state before subscribing to events.
-		seedNodeState(ctx, nodeName, controllerCli, bc)
+		seedNodeState(ctx, n.Name, controllerCli, bc)
 
 		stream, streamErr := eventCli.Subscribe(ctx, &eventv1.SubscribeRequest{})
 		if streamErr != nil {
-			slog.Debug("Failed to subscribe to node events, retrying", "node", nodeName, "error", streamErr)
+			slog.Debug("Failed to subscribe to node events, retrying", "node", n.Name, "error", streamErr)
 			select {
 			case <-ctx.Done():
 				return
@@ -53,13 +53,13 @@ func subscribeToNodeEvents(ctx context.Context, nodeName, controllerEndpoint, ev
 			continue
 		}
 
-		slog.Info("Subscribed to node events", "node", nodeName, "endpoint", eventsEndpoint)
+		slog.Info("Subscribed to node events", "node", n.Name, "endpoint", n.EventsEndpoint)
 
 		for {
 			resp, recvErr := stream.Recv()
 			if recvErr != nil {
 				if recvErr != io.EOF {
-					slog.Warn("Node event stream lost, reconnecting", "node", nodeName, "error", recvErr)
+					slog.Warn("Node event stream lost, reconnecting", "node", n.Name, "error", recvErr)
 				}
 				break
 			}
@@ -70,7 +70,7 @@ func subscribeToNodeEvents(ctx context.Context, nodeName, controllerEndpoint, ev
 			}
 
 			bc.Send(&orchestratorv1.Event{
-				Node:   nodeName,
+				Node:   n.Name,
 				Update: update,
 			})
 		}

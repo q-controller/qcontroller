@@ -10,12 +10,11 @@ import (
 	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/qemu/process"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolver, stop <-chan struct{}) error {
@@ -29,7 +28,10 @@ func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolve
 		}
 	}()
 
-	s := grpc.NewServer()
+	s, sErr := grpcutil.NewServer(grpcutil.WithTLS(config.Tls))
+	if sErr != nil {
+		return fmt.Errorf("failed to create grpc server: %w", sErr)
+	}
 	defer func() {
 		// Create a deadline for graceful shutdown
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -62,7 +64,7 @@ func Entrypoint(config *settingsv1.QemuConfig, addressResolver ip.AddressResolve
 		}
 	}()
 
-	fileRegistryConn, fileRegistryConnErr := grpc.NewClient(config.FileRegistryEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	fileRegistryConn, fileRegistryConnErr := grpcutil.Dial(config.FileRegistryEndpoint, grpcutil.WithTLS(config.FileRegistryTls))
 	if fileRegistryConnErr != nil {
 		return fmt.Errorf("failed to connect to file registry: %w", fileRegistryConnErr)
 	}

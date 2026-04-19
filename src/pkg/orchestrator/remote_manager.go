@@ -12,10 +12,10 @@ import (
 	orchestratorv1 "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/node"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // remoteNodeManager implements node.Manager by calling a remote controller via gRPC.
@@ -29,27 +29,27 @@ type remoteNodeManager struct {
 	conns       []*grpc.ClientConn
 }
 
-func newRemoteNodeManager(name, controllerEndpoint, fileRegistryEndpoint string, localImages images.ImageClient, publisher *Broadcaster) (node.Manager, error) {
-	controllerConn, controllerConnErr := grpc.NewClient(controllerEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func newRemoteNodeManager(cfg *settingsv1.Node, localImages images.ImageClient, publisher *Broadcaster) (node.Manager, error) {
+	controllerConn, controllerConnErr := grpcutil.Dial(cfg.Endpoint, grpcutil.WithTLS(cfg.ControllerTls))
 	if controllerConnErr != nil {
-		return nil, fmt.Errorf("failed to connect to controller %s: %w", name, controllerConnErr)
+		return nil, fmt.Errorf("failed to connect to controller %s: %w", cfg.Name, controllerConnErr)
 	}
 
-	frConn, frErr := grpc.NewClient(fileRegistryEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	frConn, frErr := grpcutil.Dial(cfg.FileRegistryEndpoint, grpcutil.WithTLS(cfg.FileRegistryTls))
 	if frErr != nil {
 		_ = controllerConn.Close()
-		return nil, fmt.Errorf("failed to connect to file registry %s: %w", name, frErr)
+		return nil, fmt.Errorf("failed to connect to file registry %s: %w", cfg.Name, frErr)
 	}
 	nodeImages, imgErr := images.CreateImageClient(fileregistryv1.NewFileRegistryServiceClient(frConn))
 	if imgErr != nil {
 		_ = controllerConn.Close()
 		_ = frConn.Close()
-		return nil, fmt.Errorf("failed to create image client for %s: %w", name, imgErr)
+		return nil, fmt.Errorf("failed to create image client for %s: %w", cfg.Name, imgErr)
 	}
 
 	return &remoteNodeManager{
-		name:        name,
-		endpoint:    controllerEndpoint,
+		name:        cfg.Name,
+		endpoint:    cfg.Endpoint,
 		client:      controllerv1.NewControllerServiceClient(controllerConn),
 		nodeImages:  nodeImages,
 		localImages: localImages,

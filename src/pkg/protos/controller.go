@@ -88,7 +88,7 @@ func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events
 		return nil, stateErr
 	}
 
-	manager := vm.CreateManager(settings.Local, state, eventPublisher)
+	manager := vm.CreateManager(settings.Local, state, eventPublisher, settings.QemuTls)
 	if manager == nil {
 		return nil, fmt.Errorf("failed to create a manager")
 	}

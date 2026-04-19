@@ -24,7 +24,7 @@ type Server struct {
 func NewServer(nodes []*settingsv1.Node, localImages images.ImageClient, bc *Broadcaster) (*Server, error) {
 	nodeMap := make(map[string]node.Manager, len(nodes))
 	for _, n := range nodes {
-		nm, err := newRemoteNodeManager(n.Name, n.Endpoint, n.FileRegistryEndpoint, localImages, bc)
+		nm, err := newRemoteNodeManager(n, localImages, bc)
 		if err != nil {
 			return nil, err
 		}

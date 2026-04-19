@@ -7,10 +7,10 @@ import (
 
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
+	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"github.com/q-controller/qcontroller/src/pkg/protos"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 )
 
 var eventServiceCmd = &cobra.Command{
@@ -33,7 +33,10 @@ var eventServiceCmd = &cobra.Command{
 			return fmt.Errorf("failed to listen: %w", lisErr)
 		}
 
-		s := grpc.NewServer()
+		s, sErr := grpcutil.NewServer(grpcutil.WithTLS(config.Tls))
+		if sErr != nil {
+			return fmt.Errorf("failed to create grpc server: %w", sErr)
+		}
 		eventv1.RegisterEventServiceServer(s, protos.NewEventServer())
 
 		slog.Info("Event service listening", "port", config.Port)
