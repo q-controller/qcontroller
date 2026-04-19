@@ -44,6 +44,7 @@ var fileRegistryCmd = &cobra.Command{
 		}
 
 		reg, regErr := protos.NewFileRegistry(
+			cmd.Context(),
 			filepath.Join(config.Root, config.Cache.Root),
 			config.EventsEndpoint,
 			config.EventsTls,

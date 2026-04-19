@@ -217,7 +217,7 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *fileregistryv1.ListI
 	return resp, nil
 }
 
-func NewFileRegistry(root, eventsEndpoint string, eventsTls *settingsv1.TLSConfig) (fileregistryv1.FileRegistryServiceServer, error) {
+func NewFileRegistry(ctx context.Context, root, eventsEndpoint string, eventsTls *settingsv1.TLSConfig) (fileregistryv1.FileRegistryServiceServer, error) {
 	// Create temp directory
 	tempDir, pathErr := os.MkdirTemp("", "fileregistry-*")
 	if pathErr != nil {
@@ -231,7 +231,7 @@ func NewFileRegistry(root, eventsEndpoint string, eventsTls *settingsv1.TLSConfi
 		return nil, fmt.Errorf("failed to create storage backend: %w", storageErr)
 	}
 
-	eventPublisher, eventPublisherErr := events.NewEventPublisher(context.Background(), eventsEndpoint, eventsTls)
+	eventPublisher, eventPublisherErr := events.NewEventPublisher(ctx, eventsEndpoint, eventsTls)
 	if eventPublisherErr != nil {
 		return nil, fmt.Errorf("failed to create event publisher: %w", eventPublisherErr)
 	}
