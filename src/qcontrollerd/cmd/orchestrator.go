@@ -122,9 +122,15 @@ var orchestratorCmd = &cobra.Command{
 			_ = httpServer.Close()
 		}()
 
-		slog.Info("Orchestrator listening", "port", config.Port, "nodes", len(config.Nodes))
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			return err
+		slog.Info("Orchestrator listening", "port", config.Port, "nodes", len(config.Nodes), "tls", config.Tls != nil)
+		var servErr error
+		if config.Tls != nil {
+			servErr = httpServer.ListenAndServeTLS(config.Tls.Cert, config.Tls.Key)
+		} else {
+			servErr = httpServer.ListenAndServe()
+		}
+		if servErr != nil && servErr != http.ErrServerClosed {
+			return servErr
 		}
 		return nil
 	},

@@ -132,6 +132,7 @@ message OrchestratorConfig {
     string file_registry_endpoint = 4;
     bool expose_swagger_ui = 5;
     TLSConfig file_registry_tls = 6;
+    TLSConfig tls = 7;
 }
 
 message FileRegistryConfig {
