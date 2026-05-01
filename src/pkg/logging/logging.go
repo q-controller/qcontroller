@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/q-controller/qcontroller/src/pkg/auth"
 )
 
 func LevelFromEnv() slog.Level {
@@ -19,8 +21,12 @@ func LevelFromEnv() slog.Level {
 	}
 }
 
+// CreateLogger returns a slog.Logger whose handler is wrapped with
+// auth.LogHandler, so any record whose context carries an Identity (set by
+// HTTP auth middleware or gRPC server interceptor) gets `user`/`issuedBy`
+// attributes for free. Applies to every binary subcommand.
 func CreateLogger() *slog.Logger {
-	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	base := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: LevelFromEnv(),
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey {
@@ -29,6 +35,5 @@ func CreateLogger() *slog.Logger {
 			return a
 		},
 	})
-	logger := slog.New(handler)
-	return logger
+	return slog.New(auth.LogHandler(base))
 }

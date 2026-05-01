@@ -39,7 +39,7 @@ func (h *Handler) PostV1Images(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if err := file.Close(); err != nil {
-			slog.Warn("Failed to close file", "error", err)
+			slog.WarnContext(r.Context(), "Failed to close file", "error", err)
 		}
 	}()
 
@@ -80,7 +80,7 @@ func (h *Handler) GetV1Images(w http.ResponseWriter, r *http.Request) {
 		"images": images,
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		slog.Warn("Failed to encode JSON response", "error", err)
+		slog.WarnContext(r.Context(), "Failed to encode JSON response", "error", err)
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }

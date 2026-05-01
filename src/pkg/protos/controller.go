@@ -25,7 +25,7 @@ type Server struct {
 
 func (s *Server) Start(ctx context.Context, request *controllerv1.StartRequest) (*emptypb.Empty, error) {
 	if startErr := s.manager.Start(ctx, request.Name); startErr != nil {
-		slog.Error("failed to start an instance", "error", startErr)
+		slog.ErrorContext(ctx, "failed to start an instance", "error", startErr)
 		return nil, status.Errorf(codes.Unknown, "failed to start a VM instance")
 	}
 
@@ -51,7 +51,7 @@ func (s *Server) Create(ctx context.Context, request *controllerv1.CreateRequest
 
 func (s *Server) Stop(ctx context.Context, request *controllerv1.StopRequest) (*emptypb.Empty, error) {
 	if stopErr := s.manager.Stop(ctx, request.Name, request.Force); stopErr != nil {
-		slog.Error("failed to stop an instance", "error", stopErr)
+		slog.ErrorContext(ctx, "failed to stop an instance", "error", stopErr)
 		return nil, status.Errorf(codes.Unknown, "failed to stop a VM instance")
 	}
 
@@ -60,7 +60,7 @@ func (s *Server) Stop(ctx context.Context, request *controllerv1.StopRequest) (*
 
 func (s *Server) Remove(ctx context.Context, req *controllerv1.RemoveRequest) (*emptypb.Empty, error) {
 	if removeErr := s.manager.Remove(ctx, req.Name); removeErr != nil {
-		slog.Error("failed to remove an instance", "error", removeErr)
+		slog.ErrorContext(ctx, "failed to remove an instance", "error", removeErr)
 		return nil, status.Errorf(codes.Unknown, "failed to remove a VM instance")
 	}
 

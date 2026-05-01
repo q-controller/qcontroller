@@ -10,6 +10,7 @@ import (
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/node"
+	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -42,23 +43,6 @@ func NewServer(nodes []*settingsv1.Node, localImages images.ImageClient, bc *Bro
 	}, nil
 }
 
-// asyncCtx returns a context that is canceled when the server is stopped
-// (via s.stop) or when the caller explicitly cancels it.
-func (s *Server) asyncCtx() (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		select {
-		case <-s.stop:
-			cancel()
-		case <-ctx.Done():
-			// Context was canceled externally. Nothing more to do.
-		}
-	}()
-
-	return ctx, cancel
-}
-
 func (s *Server) getNode(name string) (string, node.Manager, error) {
 	nm, ok := s.nodes[name]
 	if !ok {
@@ -82,10 +66,10 @@ func (s *Server) Create(ctx context.Context, req *orchestratorv1.CreateRequest) 
 
 	if req.Start {
 		go func() {
-			asyncCtx, cancel := s.asyncCtx()
+			asyncCtx, cancel := utils.AsyncCtx(ctx, s.stop)
 			defer cancel()
 			if startErr := nm.Start(asyncCtx, req.Name); startErr != nil {
-				slog.Error("failed to start after create", "error", startErr)
+				slog.ErrorContext(asyncCtx, "failed to start after create", "error", startErr)
 				s.broadcaster.Send(&orchestratorv1.Event{
 					Node: nodeName,
 					Update: &eventv1.Update{
@@ -104,17 +88,17 @@ func (s *Server) Create(ctx context.Context, req *orchestratorv1.CreateRequest) 
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Server) Start(_ context.Context, req *orchestratorv1.StartRequest) (*emptypb.Empty, error) {
+func (s *Server) Start(ctx context.Context, req *orchestratorv1.StartRequest) (*emptypb.Empty, error) {
 	_, nm, err := s.getNode(req.Node)
 	if err != nil {
 		return nil, err
 	}
 
 	go func() {
-		asyncCtx, cancel := s.asyncCtx()
+		asyncCtx, cancel := utils.AsyncCtx(ctx, s.stop)
 		defer cancel()
 		if startErr := nm.Start(asyncCtx, req.Name); startErr != nil {
-			slog.Error("Start failed", "node", req.Node, "name", req.Name, "error", startErr)
+			slog.ErrorContext(asyncCtx, "Start failed", "node", req.Node, "name", req.Name, "error", startErr)
 			s.broadcaster.Send(&orchestratorv1.Event{
 				Node: req.Node,
 				Update: &eventv1.Update{

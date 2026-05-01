@@ -13,6 +13,7 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/controller"
 	"github.com/q-controller/qcontroller/src/pkg/events"
 	"github.com/q-controller/qcontroller/src/pkg/node"
+	"github.com/q-controller/qcontroller/src/pkg/utils"
 )
 
 // Manager manages VMs on the local node.
@@ -72,10 +73,12 @@ func (m *Manager) Create(ctx context.Context, id, imageId string,
 	return id, nil
 }
 
-func (m *Manager) Start(_ context.Context, id string) error {
+func (m *Manager) Start(ctx context.Context, id string) error {
 	go func() {
-		if err := m.nm.Start(m.ctx, id); err != nil {
-			slog.Error("Start failed", "id", id, "error", err)
+		asyncCtx, cancel := utils.AsyncCtx(ctx, m.ctx.Done())
+		defer cancel()
+		if err := m.nm.Start(asyncCtx, id); err != nil {
+			slog.ErrorContext(asyncCtx, "Start failed", "id", id, "error", err)
 			_ = m.eventsPublisher.PublishError(fmt.Sprintf("failed to start: %v", err), id)
 		}
 	}()
