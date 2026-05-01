@@ -171,7 +171,7 @@ func (f *FileRegistry) DownloadImage(req *fileregistryv1.DownloadImageRequest, s
 func (f *FileRegistry) RemoveImage(ctx context.Context, req *fileregistryv1.RemoveImageRequest) (*fileregistryv1.RemoveImageResponse, error) {
 	removeErr := f.storage.Remove(req.ImageId)
 	if removeErr != nil {
-		slog.Warn("failed to remove image", "image_id", req.ImageId, "error", removeErr)
+		slog.WarnContext(ctx, "failed to remove image", "image_id", req.ImageId, "error", removeErr)
 		return &fileregistryv1.RemoveImageResponse{
 			Removed: false,
 		}, nil
@@ -181,7 +181,7 @@ func (f *FileRegistry) RemoveImage(ctx context.Context, req *fileregistryv1.Remo
 		if err := f.eventPublisher.PublishImageUpdate(&fileregistryv1.VMImage{
 			ImageId: req.ImageId,
 		}, eventv1.ImageEvent_EVENT_TYPE_REMOVED); err != nil {
-			slog.Error("failed to publish image removal event", "image_id", req.ImageId, "error", err)
+			slog.ErrorContext(ctx, "failed to publish image removal event", "image_id", req.ImageId, "error", err)
 		}
 	}()
 
@@ -202,7 +202,7 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *fileregistryv1.ListI
 	for _, id := range imageIDs {
 		metadata, metadataErr := f.storage.GetMetadata(id)
 		if metadataErr != nil {
-			slog.Warn("failed to get image metadata", "image_id", id, "error", metadataErr)
+			slog.WarnContext(ctx, "failed to get image metadata", "image_id", id, "error", metadataErr)
 			continue
 		}
 

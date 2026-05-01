@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package services.auth.v1;
+
+import "services/auth/v1/messages.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/auth/v1;v1";
+
+// AuthService is the JSON-API surface of authentication: config discovery,
+// current identity, and RP-initiated logout. /auth/login and /auth/callback
+// are intentionally NOT here — they are HTTP-redirect endpoints called only
+// by the browser (navigation) and the IdP (redirect), so there is no
+// programmatic client to generate. They live as direct http.Handlers.
+service AuthService {
+    rpc GetConfig(google.protobuf.Empty) returns (GetConfigResponse) {
+        option (google.api.http) = {
+            get: "/auth/config"
+        };
+    }
+
+    rpc GetMe(google.protobuf.Empty) returns (GetMeResponse) {
+        option (google.api.http) = {
+            get: "/auth/me"
+        };
+    }
+
+    rpc Logout(google.protobuf.Empty) returns (LogoutResponse) {
+        option (google.api.http) = {
+            post: "/auth/logout"
+        };
+    }
+}

@@ -189,12 +189,12 @@ func (q *QemuServer) Start(ctx context.Context,
 	// Download image if not already present
 	imagePath := qemu.ImagePath(dir)
 	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-		slog.Info("Downloading image", "image_id", req.Config.ImageId, "instance", id)
+		slog.InfoContext(ctx, "Downloading image", "image_id", req.Config.ImageId, "instance", id)
 		downloadStart := time.Now()
 		tmpPath := imagePath + ".tmp"
 		if downloadErr := q.imageClient.Download(ctx, req.Config.ImageId, tmpPath); downloadErr != nil {
 			_ = os.Remove(tmpPath)
-			slog.Error("Failed to download image", "image_id", req.Config.ImageId, "instance", id, "error", downloadErr)
+			slog.ErrorContext(ctx, "Failed to download image", "image_id", req.Config.ImageId, "instance", id, "error", downloadErr)
 			return nil, status.Errorf(codes.Internal, "failed to download image: %v", downloadErr)
 		}
 		if renameErr := os.Rename(tmpPath, imagePath); renameErr != nil {
@@ -202,16 +202,16 @@ func (q *QemuServer) Start(ctx context.Context,
 			return nil, status.Errorf(codes.Internal, "failed to finalize image: %v", renameErr)
 		}
 		if info, statErr := os.Stat(imagePath); statErr == nil {
-			slog.Info("Image downloaded", "image_id", req.Config.ImageId, "instance", id,
+			slog.InfoContext(ctx, "Image downloaded", "image_id", req.Config.ImageId, "instance", id,
 				"size_mb", info.Size()/(1024*1024), "duration", time.Since(downloadStart).Round(time.Second))
 		}
 	} else {
-		slog.Info("Image already present", "image_id", req.Config.ImageId, "instance", id)
+		slog.InfoContext(ctx, "Image already present", "image_id", req.Config.ImageId, "instance", id)
 	}
 
 	if q.nm != nil {
 		if removeErr := q.nm.RemoveInterface(id); removeErr != nil {
-			slog.Warn("Failed to remove existing interface", "instance", id, "error", removeErr)
+			slog.WarnContext(ctx, "Failed to remove existing interface", "instance", id, "error", removeErr)
 		}
 		if ifcErr := q.nm.CreateInterface(id); ifcErr != nil {
 			return nil, status.Errorf(codes.Internal, "method Start failed: %v", ifcErr)
@@ -374,7 +374,7 @@ func (q *QemuServer) getIpAddressesForInstance(ctx context.Context, id string) (
 	ipaddr, err := q.addressResolver.LookupIP(mac)
 	if err != nil {
 		// MAC not found in ARP cache yet - not an error, just no IP available
-		slog.Debug("MAC not found in ARP cache", "instance", id, "mac", mac, "error", err)
+		slog.DebugContext(ctx, "MAC not found in ARP cache", "instance", id, "mac", mac, "error", err)
 		return nil, nil
 	}
 
@@ -433,7 +433,7 @@ func (q *QemuServer) getDiskStatsForInstance(ctx context.Context, id string) *se
 
 	result, err := q.executeQMPCommand(ctx, id, client.Request(*req))
 	if err != nil {
-		slog.Debug("Failed to get block info", "instance", id, "error", err)
+		slog.DebugContext(ctx, "Failed to get block info", "instance", id, "error", err)
 		return nil
 	}
 
@@ -451,7 +451,7 @@ func (q *QemuServer) getMemoryStatsForInstance(ctx context.Context, id string) *
 
 	result, err := q.executeQMPCommand(ctx, id, client.Request(*req))
 	if err != nil {
-		slog.Debug("Failed to get balloon guest-stats", "instance", id, "error", err)
+		slog.DebugContext(ctx, "Failed to get balloon guest-stats", "instance", id, "error", err)
 		return nil
 	}
 
@@ -469,7 +469,7 @@ func (q *QemuServer) Info(ctx context.Context, request *processv1.InfoRequest) (
 
 		ipaddresses, ipaddressesErr := q.getIpAddressesForInstance(ctx, id)
 		if ipaddressesErr != nil {
-			slog.Debug("Failed to get IP addresses", "instance", id, "error", ipaddressesErr)
+			slog.DebugContext(ctx, "Failed to get IP addresses", "instance", id, "error", ipaddressesErr)
 		} else {
 			info.Ipaddresses = ipaddresses
 		}

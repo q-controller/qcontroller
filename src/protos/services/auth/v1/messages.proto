@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package services.auth.v1;
+
+option go_package = "github.com/q-controller/qcontroller/src/generated/services/auth/v1;v1";
+
+// Identity is the authenticated user surfaced on /auth/me. Subject is the
+// stable opaque ID (audit-correlation key); email/name are display fields.
+message Identity {
+    string subject = 1;
+    string email = 2;
+    string name = 3;
+    repeated string groups = 4;
+    string issued_by = 5;
+}
+
+// AuthProvider is a login provider exposed to the SPA. Empty providers list
+// = no human login configured (SPA renders nothing actionable).
+message AuthProvider {
+    string name = 1;
+}
+
+message GetConfigResponse {
+    repeated AuthProvider providers = 1;
+}
+
+message GetMeResponse {
+    Identity identity = 1;
+}
+
+// LogoutResponse carries the IdP's RP-initiated logout URL. Empty when the
+// IdP doesn't advertise an end-session endpoint — SPA falls back to local
+// logout.
+message LogoutResponse {
+    string logout_url = 1;
+}

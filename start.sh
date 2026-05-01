@@ -22,6 +22,7 @@ QCONTROLLERD=""
 RUNDIR=""
 USE_CERTS="false"
 CERTDIR=""
+USE_AUTH="false"
 pids=()
 
 OS_TYPE="$(uname -s)"
@@ -45,6 +46,13 @@ Available options:
 --end              End of DHCP/IP range in CIDR notation [default: ${END}] (both platforms)
 --macos-mode       macOS network mode: MODE_BRIDGED or MODE_SHARED [default: ${MACOS_MODE}]
 --certs            Generate a local CA and per-service certs, enabling mTLS for all gRPC
+--auth             Enable OIDC auth on the orchestrator. Requires env vars:
+                   OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET.
+                   Optional: OIDC_PROVIDER_NAME (default: "oidc").
+                   Optional: EXTERNAL_URL (default: http(s)://localhost:${ORCHESTRATOR_HTTP_PORT}).
+                   Set EXTERNAL_URL to the public URL when running behind a
+                   reverse proxy or on a non-localhost host. Register
+                   <EXTERNAL_URL>/auth/callback as a redirect URI at your IdP.
 EOF
     exit
 }
@@ -101,6 +109,9 @@ parse_params() {
                 ;;
             --certs)
                 USE_CERTS="true"
+                ;;
+            --auth)
+                USE_AUTH="true"
                 ;;
             -?*) die "Unknown option: $1" ;;
             *) break ;;
@@ -191,6 +202,30 @@ tls_block() {
     local name=$2
     [[ "${USE_CERTS}" == "true" ]] || return 0
     echo ",\"${field}\": {\"ca\": \"${CERTDIR}/ca.pem\", \"cert\": \"${CERTDIR}/${name}.pem\", \"key\": \"${CERTDIR}/${name}-key.pem\"}"
+}
+
+auth_block() {
+    [[ "${USE_AUTH}" == "true" ]] || return 0
+    : "${OIDC_ISSUER_URL:?OIDC_ISSUER_URL must be set when --auth is used}"
+    : "${OIDC_CLIENT_ID:?OIDC_CLIENT_ID must be set when --auth is used}"
+    : "${OIDC_CLIENT_SECRET:?OIDC_CLIENT_SECRET must be set when --auth is used}"
+    local name="${OIDC_PROVIDER_NAME:-oidc}"
+    local scheme="http"
+    [[ "${USE_CERTS}" == "true" ]] && scheme="https"
+    local external="${EXTERNAL_URL:-${scheme}://localhost:${ORCHESTRATOR_HTTP_PORT}}"
+    cat <<JSON
+,"auth": {
+        "external_url": "${external}",
+        "issuers": [
+            {
+                "name": "${name}",
+                "issuer_url": "${OIDC_ISSUER_URL}",
+                "client_id": "${OIDC_CLIENT_ID}",
+                "client_secret": "${OIDC_CLIENT_SECRET}"
+            }
+        ]
+    }
+JSON
 }
 
 if [[ "$OS_TYPE" == "Linux" ]]; then
@@ -305,9 +340,11 @@ cat >${CONFIGDIR}/orchestrator-config.json <<EOF
         {"name": "local", "endpoint": "localhost:${CONTROLLER_PORT}", "fileRegistryEndpoint": "${REGISTRY_ADDRESS}", "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"$(tls_block controllerTls orchestrator)$(tls_block fileRegistryTls orchestrator)$(tls_block eventsTls orchestrator)}
     ],
     "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
-    "exposeSwaggerUi": true$(tls_block fileRegistryTls orchestrator)$(tls_block tls orchestrator)
+    "exposeSwaggerUi": true$(tls_block fileRegistryTls orchestrator)$(tls_block tls orchestrator)$(auth_block)
 }
 EOF
+# May contain OIDC client_secret when --auth is used; restrict to owner.
+chmod 600 ${CONFIGDIR}/orchestrator-config.json
 
 cat >${CONFIGDIR}/eventservice-config.json <<EOF
 {

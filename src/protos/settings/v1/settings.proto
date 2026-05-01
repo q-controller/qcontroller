@@ -126,6 +126,22 @@ message EventServiceConfig {
     TLSConfig tls = 2;
 }
 
+message OIDCIssuer {
+    string name = 1;
+    string issuer_url = 2;
+    string client_id = 3;
+    string client_secret = 4;
+    // Allowed `aud` claim values. Only audiences[0] is currently checked;
+    // multi-audience verification (any-of-many) is not yet implemented.
+    // Falls back to client_id when empty.
+    repeated string audiences = 5;
+}
+
+message AuthConfig {
+    string external_url = 1;
+    repeated OIDCIssuer issuers = 2;
+}
+
 message OrchestratorConfig {
     uint32 port = 1;
     repeated Node nodes = 3;
@@ -133,6 +149,7 @@ message OrchestratorConfig {
     bool expose_swagger_ui = 5;
     TLSConfig file_registry_tls = 6;
     TLSConfig tls = 7;
+    AuthConfig auth = 8;
 }
 
 message FileRegistryConfig {
