@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -29,12 +30,12 @@ type Manager struct {
 	eventsPublisher *events.Publisher
 }
 
-func newManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher, qemuTls *settingsv1.TLSConfig) (*Manager, error) {
+func newManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher, qemuTLS *settingsv1.TLSConfig) (*Manager, error) {
 	if local == nil {
-		return nil, fmt.Errorf("local node must be configured")
+		return nil, errors.New("local node must be configured")
 	}
 
-	nm, nmErr := newLocalNodeManager(local.Name, local.Endpoint, state, qemuTls)
+	nm, nmErr := newLocalNodeManager(local.Name, local.Endpoint, state, qemuTLS)
 	if nmErr != nil {
 		return nil, nmErr
 	}
@@ -53,16 +54,16 @@ func newManager(local *settingsv1.Node, state controller.State, eventPublisher *
 	return manager, nil
 }
 
-func (m *Manager) Create(ctx context.Context, id, imageId string,
+func (m *Manager) Create(ctx context.Context, id, imageID string,
 	cpus uint32, memory, disk uint32, cloudInit *vmv1.CloudInit) (string, error) {
-	if err := m.nm.Create(ctx, id, imageId, cpus, memory, disk, cloudInit); err != nil {
+	if err := m.nm.Create(ctx, id, imageID, cpus, memory, disk, cloudInit); err != nil {
 		return "", err
 	}
 
 	_ = m.eventsPublisher.VMUpdated(&controllerv1.Info{
 		Name: id,
 		Spec: &controllerv1.VMSpec{
-			Image: imageId,
+			Image: imageID,
 			Vm:    &settingsv1.VM{Cpus: cpus, Memory: memory, Disk: disk},
 		},
 		Status: &controllerv1.VMStatus{
@@ -112,9 +113,9 @@ func (m *Manager) Close() {
 var singleton *Manager
 var once sync.Once
 
-func CreateManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher, qemuTls *settingsv1.TLSConfig) *Manager {
+func CreateManager(local *settingsv1.Node, state controller.State, eventPublisher *events.Publisher, qemuTLS *settingsv1.TLSConfig) *Manager {
 	once.Do(func() {
-		mgr, mgrErr := newManager(local, state, eventPublisher, qemuTls)
+		mgr, mgrErr := newManager(local, state, eventPublisher, qemuTLS)
 		if mgrErr != nil {
 			slog.Error("failed to create VM manager", "error", mgrErr)
 		}

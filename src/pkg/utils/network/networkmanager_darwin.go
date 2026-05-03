@@ -1,7 +1,7 @@
 package network
 
 import (
-	"fmt"
+	"errors"
 	"os/exec"
 	"strings"
 )
@@ -35,5 +35,5 @@ func GetDefaultInterface() (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("default interface not found")
+	return "", errors.New("default interface not found")
 }

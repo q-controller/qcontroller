@@ -1,6 +1,6 @@
 module github.com/q-controller/qcontroller
 
-go 1.25.5
+go 1.25.9
 
 replace github.com/q-controller/network-utils => ./network-utils
 
@@ -24,9 +24,8 @@ require (
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	golang.org/x/net v0.51.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.19.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171
-	google.golang.org/grpc v1.79.1
+	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -41,7 +40,7 @@ require (
 	github.com/chappjc/logrus-prefix v0.0.0-20180227015900-3a1d64819adb // indirect
 	github.com/coredhcp/coredhcp v0.0.0-20260110195901-da62c7b1bd56 // indirect
 	github.com/coredns/caddy v1.1.4 // indirect
-	github.com/coredns/coredns v1.14.1 // indirect
+	github.com/coredns/coredns v1.14.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dnstap/golang-dnstap v0.4.0 // indirect
@@ -55,7 +54,7 @@ require (
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/spec v0.20.6 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -79,6 +78,7 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+	github.com/pires/go-proxyproto v0.11.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
@@ -101,13 +101,14 @@ require (
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.39.0 // indirect
-	go.opentelemetry.io/otel/metric v1.39.0 // indirect
-	go.opentelemetry.io/otel/trace v1.39.0 // indirect
+	go.opentelemetry.io/otel v1.40.0 // indirect
+	go.opentelemetry.io/otel/metric v1.40.0 // indirect
+	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/text v0.34.0 // indirect

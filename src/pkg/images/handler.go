@@ -2,7 +2,6 @@ package images
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -21,7 +20,7 @@ func (h *Handler) PostV1Images(w http.ResponseWriter, r *http.Request) {
 
 	parseErr := r.ParseMultipartForm(10 << 20)
 	if parseErr != nil {
-		http.Error(w, fmt.Sprintf("failed to parse form: %s", parseErr.Error()), http.StatusBadRequest)
+		http.Error(w, "failed to parse form: "+parseErr.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -37,9 +36,10 @@ func (h *Handler) PostV1Images(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
 	defer func() {
 		if err := file.Close(); err != nil {
-			slog.WarnContext(r.Context(), "Failed to close file", "error", err)
+			slog.WarnContext(ctx, "Failed to close file", "error", err)
 		}
 	}()
 
@@ -49,6 +49,7 @@ func (h *Handler) PostV1Images(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+//nolint:revive // openapi-generated interface contract
 func (h *Handler) DeleteV1ImagesImageId(w http.ResponseWriter, r *http.Request, imageId string) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

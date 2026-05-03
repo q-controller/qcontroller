@@ -68,7 +68,7 @@ func (c *darwinRawConn) Recv(buf []byte) ([][]byte, error) {
 		return nil, nil
 	}
 
-	var frames [][]byte
+	var frames [][]byte //nolint:prealloc // frame count is data-dependent, no useful upper bound
 	for frame := range bpfPackets(buf[:n]) {
 		frames = append(frames, frame)
 	}

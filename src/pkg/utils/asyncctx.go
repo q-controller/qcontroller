@@ -1,3 +1,7 @@
+// TODO: split into pkg/contextutil, pkg/fileutil, pkg/urlutil, pkg/configutil
+// to give each helper a domain-specific home. Suppressing the lint until then.
+//
+//nolint:revive // package name "utils" — see TODO above
 package utils
 
 import "context"

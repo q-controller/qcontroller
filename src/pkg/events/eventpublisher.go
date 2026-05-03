@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -128,7 +129,7 @@ func (p *Publisher) publish(req *eventv1.PublishRequest) error {
 	case p.ch <- req:
 		return nil
 	default:
-		return fmt.Errorf("event queue is full, dropping event")
+		return errors.New("event queue is full, dropping event")
 	}
 }
 

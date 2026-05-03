@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,7 +24,7 @@ type LocalFilesystemBackend struct {
 }
 
 func NewLocalFilesystemBackend(root string) (*LocalFilesystemBackend, error) {
-	if err := os.MkdirAll(root, 0755); err != nil {
+	if err := os.MkdirAll(root, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create storage directory: %w", err)
 	}
 
@@ -89,7 +90,7 @@ func (b *LocalFilesystemBackend) Retrieve(imageID string) (io.ReadCloser, error)
 	err := b.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(imageID))
 		if err != nil {
-			if err == badger.ErrKeyNotFound {
+			if errors.Is(err, badger.ErrKeyNotFound) {
 				return fmt.Errorf("image not found: %s", imageID)
 			}
 			return err
@@ -122,7 +123,7 @@ func (b *LocalFilesystemBackend) Remove(imageID string) error {
 	err := b.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(imageID))
 		if err != nil {
-			if err == badger.ErrKeyNotFound {
+			if errors.Is(err, badger.ErrKeyNotFound) {
 				return nil // Image doesn't exist, consider it already removed
 			}
 			return err
@@ -156,7 +157,7 @@ func (b *LocalFilesystemBackend) Exists(imageID string) (bool, error) {
 	var exists bool
 	err := b.db.View(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(imageID))
-		if err == badger.ErrKeyNotFound {
+		if errors.Is(err, badger.ErrKeyNotFound) {
 			exists = false
 			return nil
 		}
@@ -178,7 +179,7 @@ func (b *LocalFilesystemBackend) GetMetadata(imageID string) (*ImageMetadata, er
 	err := b.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(imageID))
 		if err != nil {
-			if err == badger.ErrKeyNotFound {
+			if errors.Is(err, badger.ErrKeyNotFound) {
 				return fmt.Errorf("image not found: %s", imageID)
 			}
 			return err

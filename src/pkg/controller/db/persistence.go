@@ -95,7 +95,7 @@ func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 			if existing != instance.Id {
 				return fmt.Errorf("%w: hwaddr not unique", ErrConstraint)
 			}
-		} else if err != badger.ErrKeyNotFound {
+		} else if !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
 		}
 		// Remove old HwAddr secondary key if updating existing instance
@@ -108,11 +108,11 @@ func (d *databaseImpl) Update(instance *vmv1.Instance) (*vmv1.Instance, error) {
 				return err
 			}
 			if oldInst.Hwaddr != nil && *oldInst.Hwaddr != "" && (instance.Hwaddr == nil || *oldInst.Hwaddr != *instance.Hwaddr) {
-				if err := txn.Delete([]byte(hwaddrPrefix + *oldInst.Hwaddr)); err != nil && err != badger.ErrKeyNotFound {
+				if err := txn.Delete([]byte(hwaddrPrefix + *oldInst.Hwaddr)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 					return err
 				}
 			}
-		} else if err != badger.ErrKeyNotFound {
+		} else if !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
 		}
 		// Store instance
@@ -157,7 +157,7 @@ func (d *databaseImpl) Remove(id string) error {
 		inst = &tmp
 		// Remove secondary keys
 		if inst.Hwaddr != nil && *inst.Hwaddr != "" {
-			if err := txn.Delete([]byte(hwaddrPrefix + *inst.Hwaddr)); err != nil && err != badger.ErrKeyNotFound {
+			if err := txn.Delete([]byte(hwaddrPrefix + *inst.Hwaddr)); err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 				return err
 			}
 		}

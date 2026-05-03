@@ -3,6 +3,7 @@
 package protos
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -15,7 +16,7 @@ import (
 func buildPlatformConfig(config *settingsv1.QemuConfig) (*qemu.PlatformConfig, error) {
 	macosSettings := config.GetMacosSettings()
 	if macosSettings == nil {
-		return nil, fmt.Errorf("macOS settings required")
+		return nil, errors.New("macOS settings required")
 	}
 
 	darwinNet := &qemu.DarwinNetworkConfig{}
@@ -32,7 +33,7 @@ func buildPlatformConfig(config *settingsv1.QemuConfig) (*qemu.PlatformConfig, e
 
 	case settingsv1.MacosSettings_MODE_SHARED:
 		if macosSettings.Shared == nil {
-			return nil, fmt.Errorf("shared mode requires shared configuration")
+			return nil, errors.New("shared mode requires shared configuration")
 		}
 		_, ipNet, parseErr := net.ParseCIDR(macosSettings.Shared.Subnet)
 		if parseErr != nil {

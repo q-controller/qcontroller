@@ -1,4 +1,4 @@
-.PHONY: clean qcontrollerd generate lint update frontend all
+.PHONY: clean qcontrollerd generate lint vulncheck update frontend all
 SHELL := /bin/bash
 
 BUILD_DIR=build
@@ -20,6 +20,9 @@ update:
 lint: frontend generate
 	buf lint
 	golangci-lint run
+
+vulncheck: frontend generate
+	govulncheck ./...
 
 update-submodules:
 	git submodule update --init

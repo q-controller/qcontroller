@@ -56,9 +56,8 @@ func (n *localNodeManager) qemuList(ctx context.Context) ([]string, error) {
 	return resp.Ids, nil
 }
 
-func (n *localNodeManager) Create(ctx context.Context, id, imageId string,
+func (n *localNodeManager) Create(ctx context.Context, id, imageID string,
 	cpus, memory, disk uint32, cloudInit *vmv1.CloudInit) error {
-
 	if _, err := n.state.Get(id); err == nil {
 		return fmt.Errorf("instance %s already exists", id)
 	}
@@ -74,7 +73,7 @@ func (n *localNodeManager) Create(ctx context.Context, id, imageId string,
 			Memory: memory,
 			Disk:   disk,
 		},
-		ImageId:   imageId,
+		ImageId:   imageID,
 		Id:        id,
 		Hwaddr:    &hwaddr,
 		State:     vmv1.State_STATE_STOPPED,

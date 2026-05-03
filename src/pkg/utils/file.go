@@ -1,8 +1,9 @@
+//nolint:revive // package name "utils" — see TODO in asyncctx.go
 package utils
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,13 +18,13 @@ func CopyFile(src, dst string) error {
 		return err
 	}
 
-	return os.WriteFile(dst, data, 0644)
+	return os.WriteFile(dst, data, 0600)
 }
 
 func TouchFile(path string) error {
 	now := time.Now()
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
@@ -68,7 +69,7 @@ func WaitForFileCreation(ctx context.Context, filename string) error {
 		select {
 		case event, ok := <-watcher.Events:
 			if !ok {
-				return fmt.Errorf("watcher closed")
+				return errors.New("watcher closed")
 			}
 			slog.Debug("WaitForFileCreation: received event", "event", event.Op, "name", event.Name)
 			if event.Op&fsnotify.Create == fsnotify.Create {
@@ -81,7 +82,7 @@ func WaitForFileCreation(ctx context.Context, filename string) error {
 			}
 		case _, ok := <-watcher.Errors:
 			if !ok {
-				return fmt.Errorf("watcher error channel closed")
+				return errors.New("watcher error channel closed")
 			}
 		case <-ctx.Done():
 			return ctx.Err()

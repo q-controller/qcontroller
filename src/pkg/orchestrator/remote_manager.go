@@ -68,16 +68,16 @@ func (n *remoteNodeManager) Endpoint() string {
 	return n.endpoint
 }
 
-func (n *remoteNodeManager) Create(ctx context.Context, id, imageId string,
+func (n *remoteNodeManager) Create(ctx context.Context, id, imageID string,
 	cpus, memory, disk uint32, cloudInit *vmv1.CloudInit) error {
-	if err := n.ensureImage(ctx, imageId); err != nil {
+	if err := n.ensureImage(ctx, imageID); err != nil {
 		return fmt.Errorf("ensure image on %s: %w", n.name, err)
 	}
 
 	req := &controllerv1.CreateRequest{
 		Name: id,
 		Spec: &controllerv1.VMSpec{
-			Image: imageId,
+			Image: imageID,
 			Vm:    &settingsv1.VM{Cpus: cpus, Memory: memory, Disk: disk},
 		},
 	}
@@ -91,20 +91,20 @@ func (n *remoteNodeManager) Create(ctx context.Context, id, imageId string,
 	return nil
 }
 
-func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) error {
+func (n *remoteNodeManager) ensureImage(ctx context.Context, imageID string) error {
 	localImgs, err := n.localImages.List(ctx)
 	if err != nil {
 		return fmt.Errorf("list local images: %w", err)
 	}
 	var localHash string
 	for _, img := range localImgs {
-		if img.ImageId == imageId {
+		if img.ImageId == imageID {
 			localHash = img.Hash
 			break
 		}
 	}
 	if localHash == "" {
-		return fmt.Errorf("image %s not found locally", imageId)
+		return fmt.Errorf("image %s not found locally", imageID)
 	}
 
 	remoteImgs, err := n.nodeImages.List(ctx)
@@ -112,13 +112,13 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 		return fmt.Errorf("list remote images: %w", err)
 	}
 	for _, img := range remoteImgs {
-		if img.ImageId == imageId && img.Hash == localHash {
+		if img.ImageId == imageID && img.Hash == localHash {
 			return nil
 		}
 	}
 
-	slog.Info("Pushing image to remote node", "image", imageId, "node", n.name)
-	n.publishProgress(imageId, 0)
+	slog.Info("Pushing image to remote node", "image", imageID, "node", n.name)
+	n.publishProgress(imageID, 0)
 
 	tmpFile, tmpFileErr := os.CreateTemp("", "image-push-*")
 	if tmpFileErr != nil {
@@ -128,7 +128,7 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	if err := n.localImages.Download(ctx, imageId, tmpPath); err != nil {
+	if err := n.localImages.Download(ctx, imageID, tmpPath); err != nil {
 		return fmt.Errorf("download image locally: %w", err)
 	}
 
@@ -146,27 +146,27 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageId string) err
 	pf := &progressFile{
 		File:    file,
 		total:   stat.Size(),
-		imageId: imageId,
+		imageID: imageID,
 		rm:      n,
 	}
 
-	if err := n.nodeImages.Upload(ctx, imageId, pf); err != nil {
+	if err := n.nodeImages.Upload(ctx, imageID, pf); err != nil {
 		return fmt.Errorf("upload image to %s: %w", n.name, err)
 	}
 
-	slog.Info("Image pushed to remote node", "image", imageId, "node", n.name)
-	n.publishProgress(imageId, 100)
+	slog.Info("Image pushed to remote node", "image", imageID, "node", n.name)
+	n.publishProgress(imageID, 100)
 	return nil
 }
 
-func (n *remoteNodeManager) publishProgress(imageId string, percent int32) {
+func (n *remoteNodeManager) publishProgress(imageID string, percent int32) {
 	n.publisher.Send(&orchestratorv1.Event{
 		Node: n.name,
 		Update: &eventv1.Update{
 			Payload: &eventv1.Update_ProgressEvent{
 				ProgressEvent: &eventv1.ProgressEvent{
-					Resource: fmt.Sprintf("image:%s", imageId),
-					Message:  fmt.Sprintf("Pushing image to %s", n.name),
+					Resource: "image:" + imageID,
+					Message:  "Pushing image to " + n.name,
 					Percent:  percent,
 				},
 			},
@@ -212,7 +212,7 @@ type progressFile struct {
 	total   int64
 	read    int64
 	lastPct int32
-	imageId string
+	imageID string
 	rm      *remoteNodeManager
 }
 
@@ -223,7 +223,7 @@ func (pf *progressFile) Read(p []byte) (int, error) {
 		pct := int32(pf.read * 100 / pf.total)
 		if pct != pf.lastPct {
 			pf.lastPct = pct
-			pf.rm.publishProgress(pf.imageId, pct)
+			pf.rm.publishProgress(pf.imageID, pct)
 		}
 	}
 	return n, err

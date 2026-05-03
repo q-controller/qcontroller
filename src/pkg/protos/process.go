@@ -47,7 +47,7 @@ type QemuServer struct {
 
 type InstanceEvent struct {
 	Instance *qemu.Instance
-	Id       string
+	ID       string
 }
 
 type RequestKind int
@@ -63,7 +63,7 @@ type CommandResult struct {
 }
 
 type Command struct {
-	Id          string
+	ID          string
 	RequestKind RequestKind
 	Request     client.Request
 	Result      chan<- CommandResult
@@ -103,10 +103,10 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 			}
 		case command, ok := <-cmd:
 			if ok {
-				if _, exists := instances[command.Id]; exists {
-					name := fmt.Sprintf("%s:%s", process.PREFIX_QGA, command.Id)
+				if _, exists := instances[command.ID]; exists {
+					name := fmt.Sprintf("%s:%s", process.PrefixQGA, command.ID)
 					if command.RequestKind == RequestKindQMP {
-						name = fmt.Sprintf("%s:%s", process.PREFIX_QMP, command.Id)
+						name = fmt.Sprintf("%s:%s", process.PrefixQMP, command.ID)
 					}
 					result, resErr := monitor.Execute(name, command.Request)
 					command.Result <- CommandResult{
@@ -125,15 +125,15 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 			if ok {
 				errorCh := make(chan error)
 				ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
-				instances[event.Id] = &instanceState{inst: event.Instance, cancel: cancel}
+				instances[event.ID] = &instanceState{inst: event.Instance, cancel: cancel}
 				go func(ctx context.Context) {
-					err := monitor.Add(ctx, event.Id, event.Instance.QMP, process.PREFIX_QMP)
+					err := monitor.Add(ctx, event.ID, event.Instance.QMP, process.PrefixQMP)
 					if err != nil {
 						errorCh <- fmt.Errorf("could not add QMP instance to monitor: %w", err)
 					}
 				}(ctx)
 				go func(ctx context.Context) {
-					err := monitor.Add(ctx, event.Id, event.Instance.QGA, process.PREFIX_QGA)
+					err := monitor.Add(ctx, event.ID, event.Instance.QGA, process.PrefixQGA)
 					if err != nil {
 						errorCh <- fmt.Errorf("could not add QGA instance to monitor: %w", err)
 					}
@@ -142,17 +142,17 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 					defer cancel()
 					select {
 					case <-event.Instance.Done:
-						slog.Info("Instance stopped", "instance", event.Id)
-						removeCh <- event.Id
+						slog.Info("Instance stopped", "instance", event.ID)
+						removeCh <- event.ID
 						return
 					case err := <-errorCh:
-						slog.Error("Failed to add instance to monitor", "instance", event.Id, "error", err)
+						slog.Error("Failed to add instance to monitor", "instance", event.ID, "error", err)
 					case <-ctx.Done():
-						slog.Warn("Instance monitoring context deadline exceeded", "instance", event.Id)
+						slog.Warn("Instance monitoring context deadline exceeded", "instance", event.ID)
 					}
 					<-event.Instance.Done
-					slog.Info("Instance stopped", "instance", event.Id)
-					removeCh <- event.Id
+					slog.Info("Instance stopped", "instance", event.ID)
+					removeCh <- event.ID
 				}(event, ctx)
 			}
 		}
@@ -182,7 +182,7 @@ func (q *QemuServer) Start(ctx context.Context,
 
 	dir := q.instanceDir(id)
 
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create instance dir: %v", err)
 	}
 
@@ -245,7 +245,7 @@ func (q *QemuServer) Start(ctx context.Context,
 
 	q.instanceEventChannel <- &InstanceEvent{
 		Instance: inst,
-		Id:       id,
+		ID:       id,
 	}
 
 	return &processv1.StartResponse{}, nil
@@ -264,7 +264,7 @@ func (q *QemuServer) Stop(ctx context.Context,
 	}
 	ch := make(chan CommandResult)
 	q.commandCh <- Command{
-		Id:          req.Id,
+		ID:          req.Id,
 		RequestKind: RequestKindQMP,
 		Request:     client.Request(*shReq),
 		Result:      ch,
@@ -282,7 +282,7 @@ func (q *QemuServer) Stop(ctx context.Context,
 func (q *QemuServer) executeQMPCommand(ctx context.Context, id string, req client.Request) ([]byte, error) {
 	ch := make(chan CommandResult)
 	q.commandCh <- Command{
-		Id:          id,
+		ID:          id,
 		RequestKind: RequestKindQMP,
 		Request:     req,
 		Result:      ch,
@@ -294,12 +294,12 @@ func (q *QemuServer) executeQMPCommand(ctx context.Context, id string, req clien
 	}
 
 	if res.Result == nil {
-		return nil, fmt.Errorf("no result from QMP command")
+		return nil, errors.New("no result from QMP command")
 	}
 
 	r, ok := res.Result.Get(ctx, 2*time.Second)
 	if !ok || r.Return == nil {
-		return nil, fmt.Errorf("timeout or empty response from QMP command")
+		return nil, errors.New("timeout or empty response from QMP command")
 	}
 
 	return r.Return, nil
@@ -364,8 +364,8 @@ func (q *QemuServer) getMacAddressForInstance(ctx context.Context, id string) (s
 	return macAddress, nil
 }
 
-// getIpAddressesForInstance retrieves IP addresses for a VM by looking up its MAC in the ARP cache.
-func (q *QemuServer) getIpAddressesForInstance(ctx context.Context, id string) ([]string, error) {
+// getIPAddressesForInstance retrieves IP addresses for a VM by looking up its MAC in the ARP cache.
+func (q *QemuServer) getIPAddressesForInstance(ctx context.Context, id string) ([]string, error) {
 	mac, err := q.getMacAddressForInstance(ctx, id)
 	if err != nil {
 		return nil, err
@@ -442,7 +442,7 @@ func (q *QemuServer) getDiskStatsForInstance(ctx context.Context, id string) *se
 
 func (q *QemuServer) getMemoryStatsForInstance(ctx context.Context, id string) *settingsv1.MemoryStats {
 	req, reqErr := qapi.PrepareQomGetRequest(qapi.QObjQomGetArg{
-		Path:     fmt.Sprintf("/machine/peripheral/balloon-%s", id),
+		Path:     "/machine/peripheral/balloon-" + id,
 		Property: "guest-stats",
 	})
 	if reqErr != nil {
@@ -467,7 +467,7 @@ func (q *QemuServer) Info(ctx context.Context, request *processv1.InfoRequest) (
 			DiskStats:   q.getDiskStatsForInstance(ctx, id),
 		}
 
-		ipaddresses, ipaddressesErr := q.getIpAddressesForInstance(ctx, id)
+		ipaddresses, ipaddressesErr := q.getIPAddressesForInstance(ctx, id)
 		if ipaddressesErr != nil {
 			slog.DebugContext(ctx, "Failed to get IP addresses", "instance", id, "error", ipaddressesErr)
 		} else {
@@ -488,7 +488,7 @@ func (q *QemuServer) List(ctx context.Context, req *processv1.ListRequest) (*pro
 		return nil, status.Errorf(codes.Internal, "failed to read instances dir: %v", err)
 	}
 
-	var ids []string
+	ids := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -553,14 +553,14 @@ func (q *QemuServer) reattachOnStartup() {
 		slog.Info("Reattached to running instance", "id", id, "pid", pid)
 		q.instanceEventChannel <- &InstanceEvent{
 			Instance: inst,
-			Id:       id,
+			ID:       id,
 		}
 	}
 }
 
 func NewQemuService(monitor *process.InstanceMonitor, addressResolver ip.AddressResolver, config *settingsv1.QemuConfig, imageClient images.ImageClient) (processv1.QemuServiceServer, error) {
 	instancesDir := filepath.Join(config.Root, "instances")
-	if err := os.MkdirAll(instancesDir, 0755); err != nil {
+	if err := os.MkdirAll(instancesDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create instances dir: %w", err)
 	}
 

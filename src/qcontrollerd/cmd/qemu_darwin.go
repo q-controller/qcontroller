@@ -155,7 +155,7 @@ func init() {
 // newDNSForwarder creates a DNS forwarder configured for the given address.
 func newDNSForwarder(ctx context.Context, listenAddr string, dnsCfg *settingsv1.Dns) (dnsresolver.DNSForwarder, error) {
 	opts := []dnsresolver.DNSForwarderOption{
-		dnsresolver.WithForwarderAddress(fmt.Sprintf("%s:53", listenAddr)),
+		dnsresolver.WithForwarderAddress(listenAddr + ":53"),
 		dnsresolver.WithForwarderTimeout(2 * time.Second),
 		dnsresolver.WithReusePort(),
 	}

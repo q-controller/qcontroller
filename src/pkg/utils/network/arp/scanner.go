@@ -1,6 +1,7 @@
 package arp
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -108,7 +109,7 @@ func (s *scannerImpl) Scan(timeout time.Duration) (map[string]net.IP, error) {
 	for time.Now().Before(readDeadline) {
 		frames, err := conn.Recv(buf)
 		if err != nil {
-			if err == syscall.EAGAIN {
+			if errors.Is(err, syscall.EAGAIN) {
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
@@ -133,7 +134,7 @@ func (s *scannerImpl) Scan(timeout time.Duration) (map[string]net.IP, error) {
 // exist at creation time (useful for vmnet interfaces that are created when VMs start).
 func NewScanner(ifcName string, subnet *net.IPNet) (Scanner, error) {
 	if subnet == nil {
-		return nil, fmt.Errorf("subnet is required")
+		return nil, errors.New("subnet is required")
 	}
 
 	return &scannerImpl{

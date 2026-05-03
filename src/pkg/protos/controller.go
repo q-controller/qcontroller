@@ -2,7 +2,7 @@ package protos
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -79,7 +79,7 @@ func (s *Server) Info(ctx context.Context, request *controllerv1.InfoRequest) (*
 }
 
 func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher) (controllerv1.ControllerServiceServer, error) {
-	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0755); mkdirErr != nil {
+	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0700); mkdirErr != nil {
 		return nil, mkdirErr
 	}
 
@@ -90,7 +90,7 @@ func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events
 
 	manager := vm.CreateManager(settings.Local, state, eventPublisher, settings.QemuTls)
 	if manager == nil {
-		return nil, fmt.Errorf("failed to create a manager")
+		return nil, errors.New("failed to create a manager")
 	}
 
 	server := &Server{
