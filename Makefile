@@ -46,3 +46,9 @@ frontend:
 
 qcontrollerd: frontend generate
 	./build.sh
+
+format:
+	gofmt -s -w .
+
+test: generate
+	GOOS= GOARCH= go test -v ./...
