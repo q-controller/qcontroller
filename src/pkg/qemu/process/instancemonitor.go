@@ -24,12 +24,12 @@ type Greeting struct {
 var ErrNotReady = errors.New("instance is not ready")
 
 const (
-	PREFIX_QGA = "qga"
-	PREFIX_QMP = "qmp"
+	PrefixQGA = "qga"
+	PrefixQMP = "qmp"
 )
 
 type Status struct {
-	Id    string
+	ID    string
 	Ready bool
 }
 
@@ -110,9 +110,9 @@ func NewInstanceMonitor() (*InstanceMonitor, error) {
 									if resOk && res.Return != nil {
 										mon.ready[msg.Instance] = true
 										slog.Info("QMP is ready", "instance", msg.Instance)
-										for reqId, instance := range requests {
+										for reqID, instance := range requests {
 											if instance == msg.Instance {
-												delete(requests, reqId)
+												delete(requests, reqID)
 											}
 										}
 										continue
@@ -123,10 +123,10 @@ func NewInstanceMonitor() (*InstanceMonitor, error) {
 					}
 					var result client.QAPIResult
 					if err := json.Unmarshal(msg.Generic, &result); err == nil {
-						if reqId, reqIdOk := requests[result.Id]; reqIdOk {
+						if reqID, reqIDOk := requests[result.Id]; reqIDOk {
 							if result.Error == nil {
-								mon.ready[reqId] = true
-								slog.Info("QGA is ready", "instance", reqId)
+								mon.ready[reqID] = true
+								slog.Info("QGA is ready", "instance", reqID)
 							}
 							delete(requests, result.Id)
 						}

@@ -1,3 +1,4 @@
+//nolint:revive // package name "utils" — see TODO in asyncctx.go
 package utils
 
 import (

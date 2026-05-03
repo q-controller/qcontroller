@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"time"
@@ -58,7 +59,7 @@ func subscribeToNodeEvents(ctx context.Context, n *settingsv1.Node, bc *orchestr
 		for {
 			resp, recvErr := stream.Recv()
 			if recvErr != nil {
-				if recvErr != io.EOF {
+				if !errors.Is(recvErr, io.EOF) {
 					slog.Warn("Node event stream lost, reconnecting", "node", n.Name, "error", recvErr)
 				}
 				break

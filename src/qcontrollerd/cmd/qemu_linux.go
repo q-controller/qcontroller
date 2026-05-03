@@ -64,10 +64,10 @@ var qemuCmd = &cobra.Command{
 
 		if inNamespace {
 			dhcpServer, dhcpServerErr := dhcp.StartDHCPServer(
-				dhcp.WithDNS(linuxConfig.GatewayIp),
-				dhcp.WithInterface(linuxConfig.Name, linuxConfig.BridgeIp),
+				dhcp.WithDNS(linuxConfig.GatewayIP),
+				dhcp.WithInterface(linuxConfig.Name, linuxConfig.BridgeIP),
 				dhcp.WithLeaseFile(config.GetLinuxSettings().Network.Dhcp.LeaseFile),
-				dhcp.WithRange(linuxConfig.StartIp, linuxConfig.EndIp),
+				dhcp.WithRange(linuxConfig.StartIP, linuxConfig.EndIP),
 			)
 			if dhcpServerErr != nil {
 				return fmt.Errorf("failed to start DHCP server: %w", dhcpServerErr)
@@ -99,8 +99,8 @@ var qemuCmd = &cobra.Command{
 
 			netw, netwErr := network.NewNetwork(
 				network.WithName(linuxConfig.Name),
-				network.WithGateway(linuxConfig.GatewayIp),
-				network.WithBridge(linuxConfig.BridgeIp),
+				network.WithGateway(linuxConfig.GatewayIP),
+				network.WithBridge(linuxConfig.BridgeIP),
 				network.WithSubnet(linuxConfig.Subnet),
 				network.WithLinkManager(ifc.NetlinkBridgeManager{}),
 			)
@@ -110,7 +110,7 @@ var qemuCmd = &cobra.Command{
 
 			if dnsCfg := config.GetLinuxSettings().Network.Dns; dnsCfg != nil {
 				opts := []dnsresolver.DNSForwarderOption{
-					dnsresolver.WithForwarderAddress(fmt.Sprintf("%s:53", ip.String())),
+					dnsresolver.WithForwarderAddress(ip.String() + ":53"),
 					dnsresolver.WithForwarderTimeout(2 * time.Second),
 				}
 				switch v := dnsCfg.Upstream.(type) {
@@ -148,7 +148,8 @@ var qemuCmd = &cobra.Command{
 			args := append([]string(nil), os.Args[1:]...) // clone without program name
 			args = append(args, "--in-namespace", linuxConfig.Name)
 
-			cmd := exec.Command(os.Args[0], args...)
+			// Re-execing the same binary with our own args; os.Args is trusted.
+			cmd := exec.Command(os.Args[0], args...) //nolint:gosec // G204: re-exec self
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
 			// Ensure child process receives SIGTERM if parent dies

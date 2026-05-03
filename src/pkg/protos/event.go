@@ -1,6 +1,7 @@
 package protos
 
 import (
+	"errors"
 	"io"
 	"sync"
 
@@ -69,7 +70,7 @@ func (s *EventServer) Publish(srv grpc.ClientStreamingServer[v1.PublishRequest, 
 	for {
 		msg, recvErr := srv.Recv()
 		if recvErr != nil {
-			if recvErr == io.EOF {
+			if errors.Is(recvErr, io.EOF) {
 				break
 			}
 			return recvErr

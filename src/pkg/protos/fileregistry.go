@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -57,7 +58,7 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[fileregistr
 
 	for {
 		req, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			if file == nil {
 				return status.Error(codes.InvalidArgument, "no data received")
 			}
@@ -112,7 +113,7 @@ func (f *FileRegistry) UploadImage(stream grpc.ClientStreamingServer[fileregistr
 			}
 			fileID = req.ImageId
 
-			tmpFile, tmpFileErr := os.OpenFile(filepath.Join(f.tempDir, fileID), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+			tmpFile, tmpFileErr := os.OpenFile(filepath.Join(f.tempDir, fileID), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 			if tmpFileErr != nil {
 				if os.IsExist(tmpFileErr) {
 					return status.Errorf(codes.AlreadyExists, "Image with the same id is currently being uploaded")
@@ -217,7 +218,7 @@ func (f *FileRegistry) ListImages(ctx context.Context, req *fileregistryv1.ListI
 	return resp, nil
 }
 
-func NewFileRegistry(ctx context.Context, root, eventsEndpoint string, eventsTls *settingsv1.TLSConfig) (fileregistryv1.FileRegistryServiceServer, error) {
+func NewFileRegistry(ctx context.Context, root, eventsEndpoint string, eventsTLS *settingsv1.TLSConfig) (fileregistryv1.FileRegistryServiceServer, error) {
 	// Create temp directory
 	tempDir, pathErr := os.MkdirTemp("", "fileregistry-*")
 	if pathErr != nil {
@@ -231,7 +232,7 @@ func NewFileRegistry(ctx context.Context, root, eventsEndpoint string, eventsTls
 		return nil, fmt.Errorf("failed to create storage backend: %w", storageErr)
 	}
 
-	eventPublisher, eventPublisherErr := events.NewEventPublisher(ctx, eventsEndpoint, eventsTls)
+	eventPublisher, eventPublisherErr := events.NewEventPublisher(ctx, eventsEndpoint, eventsTLS)
 	if eventPublisherErr != nil {
 		return nil, fmt.Errorf("failed to create event publisher: %w", eventPublisherErr)
 	}

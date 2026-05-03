@@ -2,6 +2,7 @@ package arp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -31,7 +32,7 @@ func NewResolver(ctx context.Context, opts ...ScannerOption) (ip.AddressResolver
 	}
 
 	if cfg.Scanner == nil {
-		return nil, fmt.Errorf("scanner is required for ARP resolver")
+		return nil, errors.New("scanner is required for ARP resolver")
 	}
 
 	resolver := &Resolver{

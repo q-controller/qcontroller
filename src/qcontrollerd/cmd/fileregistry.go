@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -30,7 +31,7 @@ var fileRegistryCmd = &cobra.Command{
 		slog.Debug("Read config", "config", config)
 
 		if config.Cache == nil {
-			return fmt.Errorf("failed to read config: image cache is not set")
+			return errors.New("failed to read config: image cache is not set")
 		}
 
 		lis, lisErr := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))

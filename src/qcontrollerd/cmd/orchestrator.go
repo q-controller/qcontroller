@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -166,8 +167,9 @@ var orchestratorCmd = &cobra.Command{
 		handler := auth.SecurityHeaders(externalURL)(auth.Middleware(verifiers, exempt...)(inner))
 
 		httpServer := &http.Server{
-			Addr:    fmt.Sprintf(":%d", config.Port),
-			Handler: handler,
+			Addr:              fmt.Sprintf(":%d", config.Port),
+			Handler:           handler,
+			ReadHeaderTimeout: 10 * time.Second, // mitigate Slowloris (gosec G112)
 		}
 
 		go func() {

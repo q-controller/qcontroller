@@ -4,6 +4,7 @@ package arp
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"iter"
 	"syscall"
@@ -72,7 +73,7 @@ func openBPF() (int, error) {
 			return fd, nil
 		}
 	}
-	return -1, fmt.Errorf("no available BPF devices")
+	return -1, errors.New("no available BPF devices")
 }
 
 // bindBPFToInterface binds the BPF device to a network interface
@@ -92,7 +93,7 @@ func bindBPFToInterface(fd int, ifaceName string) error {
 		uintptr(unsafe.Pointer(&ifr)),
 	)
 	if errno != 0 {
-		return fmt.Errorf("BIOCSETIF failed: %v", errno)
+		return fmt.Errorf("BIOCSETIF failed: %w", errno)
 	}
 	return nil
 }
@@ -111,7 +112,7 @@ func setBPFImmediate(fd int, enable bool) error {
 		uintptr(unsafe.Pointer(&val)),
 	)
 	if errno != 0 {
-		return fmt.Errorf("BIOCIMMEDIATE failed: %v", errno)
+		return fmt.Errorf("BIOCIMMEDIATE failed: %w", errno)
 	}
 	return nil
 }
@@ -129,7 +130,7 @@ func setBPFPromisc(fd int, enable bool) error {
 		0,
 	)
 	if errno != 0 {
-		return fmt.Errorf("BIOCPROMISC failed: %v", errno)
+		return fmt.Errorf("BIOCPROMISC failed: %w", errno)
 	}
 	return nil
 }
@@ -169,7 +170,7 @@ func setBPFFilterARPReply(fd int) error {
 		uintptr(unsafe.Pointer(&prog)),
 	)
 	if errno != 0 {
-		return fmt.Errorf("BIOCSETF failed: %v", errno)
+		return fmt.Errorf("BIOCSETF failed: %w", errno)
 	}
 	return nil
 }
@@ -185,7 +186,7 @@ func getBPFBufLen(fd int) (int, error) {
 		uintptr(unsafe.Pointer(&bufLen)),
 	)
 	if errno != 0 {
-		return 0, fmt.Errorf("BIOCGBLEN failed: %v", errno)
+		return 0, fmt.Errorf("BIOCGBLEN failed: %w", errno)
 	}
 	return int(bufLen), nil
 }

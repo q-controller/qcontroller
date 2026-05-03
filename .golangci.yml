@@ -1,0 +1,91 @@
+version: "2"
+
+linters:
+  # Start from the default set, add the high-value catchers.
+  default: standard
+  enable:
+    # Bugs / correctness
+    - errorlint        # %v on errors instead of %w; missing errors.Is/As
+    - bodyclose        # http.Response.Body never closed
+    - rowserrcheck     # sql.Rows.Err() not checked
+    - sqlclosecheck    # sql.Rows / sql.Stmt not closed
+    - nilerr           # returning nil after `if err != nil`
+    - nilnil           # returning (nil, nil) where one should be non-nil
+    - copyloopvar      # accidental loop-variable capture
+    - exhaustive       # switch on enum-like type missing a case
+    - durationcheck    # multiplying durations by other durations
+    - contextcheck     # context not propagated correctly through call chain
+
+    # Security
+    - gosec            # hardcoded creds, weak crypto, InsecureSkipVerify, etc.
+
+    # Performance
+    - prealloc         # slices that could be pre-sized
+    - perfsprint       # fmt.Sprintf where strconv would do
+
+    # Style / readability
+    - revive           # configurable replacement for golint
+    - misspell         # typos in comments and strings
+    - unconvert        # redundant type conversions
+    - whitespace       # leading/trailing whitespace in blocks
+
+  settings:
+    errcheck:
+      # Don't flag unchecked io.Closer.Close in defers — too noisy and rarely
+      # actionable. bodyclose / sqlclosecheck cover the cases that actually matter.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+
+    gosec:
+      # Excluded rules and why:
+      # G103 — unsafe.Pointer. Expected in low-level BPF/syscall code.
+      # G115 — integer overflow on conversion. Mostly false positives for
+      #        bounded values (proto uint32 → int).
+      # G304 — file path from a variable. Fires on every os.ReadFile(cfgPath);
+      #        we trust our own config paths, so this is pure noise.
+      excludes:
+        - G103
+        - G115
+        - G304
+
+    revive:
+      # `exported` (every public decl needs a doc comment) is intentionally
+      # NOT enabled — it generates noise without proportional value, especially
+      # for proto-generated handler methods whose names already self-document.
+      rules:
+        - name: var-naming
+        - name: error-return
+        - name: error-strings       # error strings: lowercase, no trailing punctuation
+        - name: receiver-naming
+        - name: blank-imports
+        - name: context-as-argument # ctx must be the first param
+        - name: context-keys-type   # don't use string types as ctx keys
+
+    exhaustive:
+      default-signifies-exhaustive: true  # `default:` counts as covering all cases
+
+  exclusions:
+    paths:
+      # Generated code (protobuf, openapi, grpc-gateway). Don't lint what we
+      # don't own.
+      - src/generated
+      - qapi-client
+    rules:
+      # Tests can be slightly looser — short-circuit error checks, occasional
+      # hardcoded "secrets" in fixtures, micro-perf nits, etc.
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - gosec
+          - revive
+          - prealloc
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0   # don't truncate
+  max-same-issues: 0         # show all duplicates

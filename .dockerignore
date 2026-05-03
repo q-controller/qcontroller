@@ -7,3 +7,4 @@ docker-compose.yml
 *.json
 start.sh
 exec.sh
+.github

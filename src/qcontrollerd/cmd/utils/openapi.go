@@ -1,3 +1,6 @@
+// TODO: rename to cmd/openapi (this package only holds the OpenAPI generator).
+//
+//nolint:revive // package name "utils" — see TODO above
 package utils
 
 import (

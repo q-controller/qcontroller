@@ -29,8 +29,8 @@ func (h *imageClientImpl) Upload(ctx context.Context, name string, file multipar
 	buffer := make([]byte, chunkSize)
 	for {
 		n, err := file.Read(buffer)
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("failed to read file: %v", err)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("failed to read file: %w", err)
 		}
 		if n == 0 {
 			// No more data to read
@@ -55,7 +55,7 @@ func (h *imageClientImpl) Upload(ctx context.Context, name string, file multipar
 
 func (h *imageClientImpl) Download(ctx context.Context, id, path string) (retErr error) {
 	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
 		return err
 	}
 
