@@ -2,6 +2,7 @@ FROM golang:1.25.5-bookworm AS pre-build
 
 ARG GROUP_ID
 ARG USER_ID
+ARG NODE_OPTIONS=
 
 RUN apt update
 RUN apt install -y protobuf-compiler
@@ -19,5 +20,5 @@ RUN chmod +x /usr/local/bin/prepare.sh
 
 USER qcontrollerd
 
-RUN /usr/local/bin/prepare.sh
+RUN NODE_OPTIONS="${NODE_OPTIONS}" /usr/local/bin/prepare.sh
 ENTRYPOINT ["/bin/bash", "-i", "-c"]
