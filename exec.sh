@@ -25,6 +25,18 @@ else
     GOOS=darwin
 fi
 
+# Forward env vars named in EXEC_ENV (space-separated) into both the build
+# and run phases. Docker's `-e NAME` and `--build-arg NAME` (no value) read
+# NAME from the current shell, so values pass through untouched. The build
+# side requires a matching `ARG NAME` in the Dockerfile.
+# Example: EXEC_ENV=NODE_OPTIONS NODE_OPTIONS=--dns-result-order=ipv4first ./exec.sh make lint
+extra_env_flags=()
+extra_build_args=()
+for name in ${EXEC_ENV:-}; do
+    extra_env_flags+=(-e "$name")
+    extra_build_args+=(--build-arg "$name")
+done
+
 docker run --rm -it -v "${script_dir}:${script_dir}" \
     -v "${CACHE_DIR}/.go:${CACHE_DIR}/.go" \
     -v "${CACHE_DIR}/.go-mod-cache:${CACHE_DIR}/.go-mod-cache" \
@@ -34,5 +46,8 @@ docker run --rm -it -v "${script_dir}:${script_dir}" \
     -e GOCACHE=${CACHE_DIR}/.go \
     -e GOMODCACHE=${CACHE_DIR}/.go-mod-cache \
     -e GOOS=${GOOS} \
-    $(docker build -q --target pre-build . -f Dockerfile --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)) \
+    ${extra_env_flags[@]+"${extra_env_flags[@]}"} \
+    $(docker build -q --target pre-build . -f Dockerfile \
+        --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) \
+        ${extra_build_args[@]+"${extra_build_args[@]}"}) \
     "$*"
