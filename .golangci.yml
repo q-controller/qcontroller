@@ -71,6 +71,7 @@ linters:
       # don't own.
       - src/generated
       - qapi-client
+      - frontend
     rules:
       # Tests can be slightly looser — short-circuit error checks, occasional
       # hardcoded "secrets" in fixtures, micro-perf nits, etc.

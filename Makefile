@@ -18,7 +18,7 @@ update:
 	buf dep update
 
 lint: frontend generate
-	buf lint
+	buf lint schema
 	golangci-lint run
 
 vulncheck: frontend generate
@@ -32,16 +32,17 @@ generate:
 	mkdir -p ${BUILD_DIR}
 	./qapi-client/generate.sh --schema qapi-client/qemu/qapi/qapi-schema.json --out-dir ${GEN_DIR} --package qapi
 	./qapi-client/generate.sh --schema qapi-client/qemu/qga/qapi-schema.json --out-dir ${GEN_DIR} --package qga
-	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./oapi.yml image-service-openapi.yml
+	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./schema/oapi.yml schema/image-service-openapi.yml
 	mkdir -p src/qcontrollerd/cmd/utils/docs/
-	cp image-service-openapi.yml src/qcontrollerd/cmd/utils/docs/
-	buf generate
-	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./oapi-controller-client.yml src/qcontrollerd/cmd/utils/docs/openapi.yaml
-	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./oapi-image-client.yml image-service-openapi.yml
+	cp schema/image-service-openapi.yml src/qcontrollerd/cmd/utils/docs/
+	mkdir -p ${GEN_DIR} && cd ${GEN_DIR} && buf generate $(CURDIR)/schema --template $(CURDIR)/schema/buf.gen.go.yaml
+	cd src/qcontrollerd/cmd/utils/docs && buf generate $(CURDIR)/schema --template $(CURDIR)/schema/buf.gen.openapi.yaml
+	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./schema/oapi-controller-client.yml src/qcontrollerd/cmd/utils/docs/openapi.yaml
+	GOOS= GOARCH= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -config ./schema/oapi-image-client.yml schema/image-service-openapi.yml
 
 frontend:
 	cd frontend && yes | yarn install
-	cd frontend && yarn generate ../src/protos ../image-service-openapi.yml
+	cd frontend && yarn generate $(CURDIR)/schema/protos $(CURDIR)/schema/image-service-openapi.yml
 	cd frontend && BUILD_DIR=${FRONTEND_BUILD_DIR} yarn build --emptyOutDir
 
 qcontrollerd: frontend generate

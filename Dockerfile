@@ -15,10 +15,16 @@ RUN if ! getent group ${GROUP_ID} > /dev/null; then \
 
 
 RUN apt install -y python3-venv
-COPY prepare.sh /usr/local/bin/prepare.sh
-RUN chmod +x /usr/local/bin/prepare.sh
+
+# Stage prepare.sh + schema/prepare.sh under a single root so the wrapper's
+# ${script_dir}/schema/prepare.sh resolution works.
+COPY prepare.sh /usr/local/qcontroller-bootstrap/prepare.sh
+COPY schema/prepare.sh /usr/local/qcontroller-bootstrap/schema/prepare.sh
+RUN chmod +x /usr/local/qcontroller-bootstrap/prepare.sh \
+             /usr/local/qcontroller-bootstrap/schema/prepare.sh \
+    && chown -R ${USER_ID}:${GROUP_ID} /usr/local/qcontroller-bootstrap
 
 USER qcontrollerd
 
-RUN NODE_OPTIONS="${NODE_OPTIONS}" /usr/local/bin/prepare.sh
+RUN NODE_OPTIONS="${NODE_OPTIONS}" /usr/local/qcontroller-bootstrap/prepare.sh
 ENTRYPOINT ["/bin/bash", "-i", "-c"]
