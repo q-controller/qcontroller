@@ -231,6 +231,15 @@ func (q *QemuServer) Start(ctx context.Context,
 		return nil, status.Errorf(codes.Internal, "failed to build platform config: %v", platformErr)
 	}
 
+	binaries := qemu.Binaries{}
+	if b := q.config.GetBinaries(); b != nil {
+		binaries = qemu.Binaries{
+			Qemu:       b.GetQemu(),
+			QemuImg:    b.GetQemuImg(),
+			IsoCreator: b.GetIsoCreator(),
+		}
+	}
+
 	inst, qemuInstanceErr := qemu.Start(id, dir, qemu.Config{
 		Cpus:      req.Config.Hardware.Cpus,
 		Memory:    req.Config.Hardware.Memory,
@@ -238,6 +247,7 @@ func (q *QemuServer) Start(ctx context.Context,
 		HwAddr:    req.Config.Network.Mac,
 		Platform:  platformConfig,
 		CloudInit: cloudInit,
+		Binaries:  binaries,
 	})
 	if qemuInstanceErr != nil {
 		return nil, status.Errorf(codes.Internal, "method Start failed: %v", qemuInstanceErr)
