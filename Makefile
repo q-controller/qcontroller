@@ -18,10 +18,12 @@ update:
 	buf dep update
 
 lint: frontend generate
+	cd frontend && yarn lint
 	buf lint schema
 	golangci-lint run
 
 vulncheck: frontend generate
+	cd frontend && yarn audit --groups dependencies --level moderate
 	govulncheck ./...
 
 update-submodules:
