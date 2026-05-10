@@ -106,6 +106,14 @@ message ControllerConfig {
     TLSConfig events_tls = 7;
 }
 
+// QemuBinaries lets operators pin absolute paths to external tools the
+// qemu service shells out to. Empty fields fall back to PATH lookup.
+message QemuBinaries {
+    string qemu        = 1; // qemu-system-* (e.g. /opt/homebrew/bin/qemu-system-aarch64)
+    string qemu_img    = 2; // qemu-img
+    string iso_creator = 3; // genisoimage on linux, mkisofs on darwin
+}
+
 message QemuConfig {
     uint32 port = 1;
     Cache cache = 2;
@@ -119,6 +127,7 @@ message QemuConfig {
     string file_registry_endpoint = 6;
     TLSConfig tls = 7;
     TLSConfig file_registry_tls = 8;
+    QemuBinaries binaries = 9;
 }
 
 message EventServiceConfig {
