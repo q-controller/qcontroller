@@ -37,7 +37,10 @@ for name in ${EXEC_ENV:-}; do
     extra_build_args+=(--build-arg "$name")
 done
 
-docker run --rm -it -v "${script_dir}:${script_dir}" \
+DOCKER_TTY_FLAGS="-i"
+[ -t 0 ] && DOCKER_TTY_FLAGS="-it"
+
+docker run --rm ${DOCKER_TTY_FLAGS} -v "${script_dir}:${script_dir}" \
     -v "${CACHE_DIR}/.go:${CACHE_DIR}/.go" \
     -v "${CACHE_DIR}/.go-mod-cache:${CACHE_DIR}/.go-mod-cache" \
     -v "${CACHE_DIR}/.buf:${CACHE_DIR}/.buf" \

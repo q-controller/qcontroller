@@ -1,4 +1,4 @@
-.PHONY: clean qcontrollerd generate lint vulncheck update frontend all
+.PHONY: clean qcontrollerd generate lint vulncheck update frontend all deb
 SHELL := /bin/bash
 
 BUILD_DIR=build
@@ -55,3 +55,8 @@ format:
 
 test: generate
 	GOOS= GOARCH= go test -v ./...
+
+PKG_VERSION ?= 0.0.1
+
+deb: qcontrollerd
+	./build-deb.sh --version $(PKG_VERSION)

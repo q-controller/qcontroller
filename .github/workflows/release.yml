@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build .deb (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install yarn
+        run: npm install -g yarn
+
+      - name: Install dependencies
+        run: make install-tools
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build .deb
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: make deb PKG_VERSION=${{ steps.version.outputs.version }}
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qcontrollerd_${{ steps.version.outputs.version }}_${{ matrix.arch }}
+          path: build/qcontrollerd_${{ steps.version.outputs.version }}_${{ matrix.arch }}.deb
+          if-no-files-found: error
+
+  publish:
+    name: Attach .deb files to release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: artifacts/*.deb

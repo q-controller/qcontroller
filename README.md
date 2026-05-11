@@ -68,6 +68,46 @@ To uninstall:
 sudo /usr/local/share/com.github.qcontroller.qcontrollerd/uninstall.sh
 ```
 
+### Debian/Ubuntu Package Installation
+
+For Debian/Ubuntu users, a `.deb` package can be built and installed:
+
+```bash
+# Build the binary and package it. Set GOARCH for cross-arch.
+make install-tools                          # one-time setup
+make deb PKG_VERSION=0.0.1                  # native arch
+GOARCH=arm64 make deb PKG_VERSION=0.0.1     # cross-compile
+
+# apt drops privileges to the unprivileged _apt user when reading the
+# .deb (sandboxing), which can't read files in your source tree. Move
+# the package to a world-readable location like /tmp first.
+cp build/qcontrollerd_0.0.1_amd64.deb /tmp/
+
+# Install (this also creates system users and starts all services)
+sudo apt install /tmp/qcontrollerd_0.0.1_amd64.deb
+```
+
+The package installs:
+- Binary at `/usr/bin/qcontrollerd`
+- Service configs at `/etc/qcontrollerd/<service>/config.json` (preserved on upgrade as Debian conffiles)
+- systemd units at `/lib/systemd/system/qcontrollerd-<service>.service`
+- Per-service data under `/var/lib/qcontrollerd/<service>/`
+- Logs via journald (`journalctl -u qcontrollerd-<service>`)
+
+A single dedicated `qcontroller` system user is created and used for the controller, fileregistry, eventservice and orchestrator services. The qemu service runs as root because it creates network namespaces and bridges.
+
+The Swagger UI is **disabled by default**; enable it by setting `exposeSwaggerUi: true` in `/etc/qcontrollerd/orchestrator/config.json` and restarting `qcontrollerd-orchestrator`.
+
+To remove (keeps configs):
+```bash
+sudo apt remove qcontrollerd
+```
+
+To purge (removes configs, data, users):
+```bash
+sudo apt purge qcontrollerd
+```
+
 ### Manual Build Instructions
 
 To build the binary manually, run:
