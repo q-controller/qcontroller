@@ -63,17 +63,6 @@ var qemuCmd = &cobra.Command{
 		}
 
 		if inNamespace {
-			dhcpServer, dhcpServerErr := dhcp.StartDHCPServer(
-				dhcp.WithDNS(linuxConfig.GatewayIP),
-				dhcp.WithInterface(linuxConfig.Name, linuxConfig.BridgeIP),
-				dhcp.WithLeaseFile(config.GetLinuxSettings().Network.Dhcp.LeaseFile),
-				dhcp.WithRange(linuxConfig.StartIP, linuxConfig.EndIP),
-			)
-			if dhcpServerErr != nil {
-				return fmt.Errorf("failed to start DHCP server: %w", dhcpServerErr)
-			}
-			defer dhcpServer.Stop()
-
 			scanner, scannerErr := arp.NewScanner(linuxConfig.Name, linuxConfig.Subnet)
 			if scannerErr != nil {
 				return fmt.Errorf("failed to create arp scanner: %w", scannerErr)
@@ -107,6 +96,17 @@ var qemuCmd = &cobra.Command{
 			if netwErr != nil {
 				return fmt.Errorf("failed to create network: %w", netwErr)
 			}
+
+			dhcpServer, dhcpServerErr := dhcp.StartDHCPServer(
+				dhcp.WithDNS(linuxConfig.GatewayIP),
+				dhcp.WithRouter(linuxConfig.GatewayIP),
+				dhcp.WithLeaseFile(config.GetLinuxSettings().Network.Dhcp.LeaseFile),
+				dhcp.WithRange(linuxConfig.StartIP, linuxConfig.EndIP),
+			)
+			if dhcpServerErr != nil {
+				return fmt.Errorf("failed to start DHCP server: %w", dhcpServerErr)
+			}
+			defer dhcpServer.Stop()
 
 			if dnsCfg := config.GetLinuxSettings().Network.Dns; dnsCfg != nil {
 				opts := []dnsresolver.DNSForwarderOption{
