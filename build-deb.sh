@@ -221,7 +221,16 @@ Restart=on-failure
 RestartSec=2
 EOF
 
-        if [[ "$svc" != "qemu" ]]; then
+        # qemu spawns qemu-system-* subprocesses (one per VM) that must
+        # survive a service restart. KillMode=process tells systemd to
+        # signal only the main process; the children (already detached via
+        # Setsid) get reparented to PID 1 and qcontrollerd reattaches to
+        # them by pidfile on next start.
+        if [[ "$svc" == "qemu" ]]; then
+            cat >> "${unit}" <<EOF
+KillMode=process
+EOF
+        else
             cat >> "${unit}" <<EOF
 User=qcontroller
 Group=qcontroller
@@ -438,12 +447,46 @@ EOF
 #!/usr/bin/env bash
 set -e
 
+# Kill any running qemu-system-* processes spawned by qcontroller. The qemu
+# systemd unit uses KillMode=process so VMs survive a service restart; this
+# is desirable on `upgrade` (the new qcontrollerd reattaches via pidfiles)
+# but on `remove` and `purge` the binary is gone, leaving orphan VMs the
+# user can no longer manage.
+kill_running_vms() {
+    [[ -d /var/lib/qcontrollerd/qemu/instances ]] || return 0
+    local pids=() pid pidfile alive
+    for pidfile in /var/lib/qcontrollerd/qemu/instances/*/pid; do
+        [[ -f "$pidfile" ]] || continue
+        pid=$(cat "$pidfile" 2>/dev/null) || continue
+        [[ -n "$pid" ]] || continue
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -TERM "$pid" 2>/dev/null || true
+            pids+=("$pid")
+        fi
+    done
+    (( ${#pids[@]} > 0 )) || return 0
+    # Wait up to ~5s for graceful exit, then SIGKILL holdouts.
+    for _ in 1 2 3 4 5; do
+        sleep 1
+        alive=0
+        for pid in "${pids[@]}"; do
+            kill -0 "$pid" 2>/dev/null && alive=1
+        done
+        (( alive == 0 )) && break
+    done
+    for pid in "${pids[@]}"; do
+        kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null || true
+    done
+}
+
 case "$1" in
     remove)
         systemctl daemon-reload || true
+        kill_running_vms
         ;;
     purge)
         systemctl daemon-reload || true
+        kill_running_vms
         rm -rf /var/lib/qcontrollerd
         if getent passwd qcontroller >/dev/null; then
             deluser --quiet --system qcontroller >/dev/null 2>&1 || true
