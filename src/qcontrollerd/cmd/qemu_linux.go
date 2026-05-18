@@ -17,6 +17,7 @@ import (
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/arp"
+	"github.com/vishvananda/netlink"
 
 	dnsresolver "github.com/q-controller/network-utils/src/utils/network/dns"
 	"github.com/spf13/cobra"
@@ -136,11 +137,57 @@ var qemuCmd = &cobra.Command{
 			}
 			defer subscription.Stop()
 
+			// Reactive firewall reconcile: Docker (and other firewall tools)
+			// can flush the standard FORWARD/POSTROUTING chains on reload,
+			// removing our rules. A single goroutine owns the iface state
+			// and re-applies on default-iface changes, link changes, and a
+			// periodic safety tick. netw.Connect is idempotent.
 			go func() {
-				for iface := range subscription.InterfaceCh {
-					slog.Info("Default interface changed", "interface", iface)
+				linkCh := make(chan netlink.LinkUpdate, 16)
+				linkDone := make(chan struct{})
+				defer close(linkDone)
+				if err := netlink.LinkSubscribe(linkCh, linkDone); err != nil {
+					slog.Warn("Failed to subscribe to link changes; reconcile relies on ticker only", "error", err)
+					linkCh = nil
+				}
+
+				ticker := time.NewTicker(30 * time.Second)
+				defer ticker.Stop()
+
+				subCh := subscription.InterfaceCh
+
+				var iface string
+				for {
+					select {
+					case <-done:
+						return
+					case newIface, ok := <-subCh:
+						if !ok {
+							slog.Warn("Default-interface subscription closed; reconcile continues with ticker and link events")
+							subCh = nil
+							continue
+						}
+						slog.Info("Default interface changed", "interface", newIface)
+						iface = newIface
+					case <-linkCh:
+						// Drain pending link events so a burst (Docker
+						// creating many veth/bridge interfaces in quick
+						// succession) coalesces into a single Connect.
+					drain:
+						for {
+							select {
+							case <-linkCh:
+							default:
+								break drain
+							}
+						}
+					case <-ticker.C:
+					}
+					if iface == "" {
+						continue
+					}
 					if err := netw.Connect(iface, true); err != nil {
-						slog.Error("Failed to connect network to interface", "interface", iface, "error", err)
+						slog.Warn("Apply forwarding rules failed", "interface", iface, "error", err)
 					}
 				}
 			}()
