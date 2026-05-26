@@ -106,12 +106,18 @@ message ControllerConfig {
     TLSConfig events_tls = 7;
 }
 
-// QemuBinaries lets operators pin absolute paths to external tools the
-// qemu service shells out to. Empty fields fall back to PATH lookup.
+// QemuBinaries lets operators pin absolute paths to external tools and
+// firmware the qemu service relies on. Empty fields fall back to a
+// platform default (PATH lookup for binaries; qemu's name-based bios
+// resolution for the firmware).
 message QemuBinaries {
     string qemu        = 1; // qemu-system-* (e.g. /opt/homebrew/bin/qemu-system-aarch64)
     string qemu_img    = 2; // qemu-img
     string iso_creator = 3; // genisoimage on linux, mkisofs on darwin
+    // Absolute path to the EDK2 firmware passed via -bios. Required on
+    // distros where the file is not named edk2-aarch64-code.fd (e.g.
+    // Debian/Ubuntu ship it as /usr/share/AAVMF/AAVMF_CODE.fd).
+    string bios        = 4;
 }
 
 message QemuConfig {
@@ -128,6 +134,12 @@ message QemuConfig {
     TLSConfig tls = 7;
     TLSConfig file_registry_tls = 8;
     QemuBinaries binaries = 9;
+
+    // When true, fall back to software emulation (TCG) if the hardware
+    // accelerator (KVM on Linux, HVF on macOS) is unavailable at runtime.
+    // Default false: missing hardware acceleration is treated as a hard
+    // error so production hosts don't silently run much slower.
+    bool allow_emulation_fallback = 10;
 }
 
 message EventServiceConfig {
