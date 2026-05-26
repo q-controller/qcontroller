@@ -146,7 +146,8 @@ EOF
             }
         }
     },
-    "fileRegistryEndpoint": "${GATEWAY_IP}:${FILEREGISTRY_PORT}"
+    "fileRegistryEndpoint": "${GATEWAY_IP}:${FILEREGISTRY_PORT}",
+    "allowEmulationFallback": false
 }
 EOF
 

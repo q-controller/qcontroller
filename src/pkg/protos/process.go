@@ -237,17 +237,19 @@ func (q *QemuServer) Start(ctx context.Context,
 			Qemu:       b.GetQemu(),
 			QemuImg:    b.GetQemuImg(),
 			IsoCreator: b.GetIsoCreator(),
+			Bios:       b.GetBios(),
 		}
 	}
 
 	inst, qemuInstanceErr := qemu.Start(id, dir, qemu.Config{
-		Cpus:      req.Config.Hardware.Cpus,
-		Memory:    req.Config.Hardware.Memory,
-		Disk:      req.Config.Hardware.Disk,
-		HwAddr:    req.Config.Network.Mac,
-		Platform:  platformConfig,
-		CloudInit: cloudInit,
-		Binaries:  binaries,
+		Cpus:                   req.Config.Hardware.Cpus,
+		Memory:                 req.Config.Hardware.Memory,
+		Disk:                   req.Config.Hardware.Disk,
+		HwAddr:                 req.Config.Network.Mac,
+		Platform:               platformConfig,
+		CloudInit:              cloudInit,
+		Binaries:               binaries,
+		AllowEmulationFallback: q.config.GetAllowEmulationFallback(),
 	})
 	if qemuInstanceErr != nil {
 		return nil, status.Errorf(codes.Internal, "method Start failed: %v", qemuInstanceErr)
