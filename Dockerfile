@@ -7,6 +7,10 @@ ARG NODE_OPTIONS=
 RUN apt update
 RUN apt install -y protobuf-compiler
 RUN apt install -y default-jre
+# build-essential provides gcc / libc6-dev required by cgo (mattn/go-sqlite3
+# pulled in via coredhcp's range plugin). Without it `go build` silently
+# defaults to CGO_ENABLED=0 and the binary stubs out sqlite at runtime.
+RUN apt install -y build-essential
 
 RUN if ! getent group ${GROUP_ID} > /dev/null; then \
         addgroup --gid ${GROUP_ID} qcontrollerd; \

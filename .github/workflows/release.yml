@@ -10,13 +10,24 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            cc: gcc
+            apt_pkg: build-essential
+          - arch: arm64
+            cc: aarch64-linux-gnu-gcc
+            apt_pkg: gcc-aarch64-linux-gnu
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
           ref: ${{ github.event.release.tag_name }}
+
+      - name: Install C toolchain (${{ matrix.apt_pkg }})
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.apt_pkg }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -47,6 +58,8 @@ jobs:
       - name: Build .deb
         env:
           GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "1"
+          CC: ${{ matrix.cc }}
         run: make deb PKG_VERSION=${{ steps.version.outputs.version }}
 
       - name: Upload .deb artifact
