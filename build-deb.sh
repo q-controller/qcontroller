@@ -300,7 +300,7 @@ Architecture: ${ARCH}
 Maintainer: Nikita Vakula <programmistov.programmist@gmail.com>
 Section: admin
 Priority: optional
-Depends: systemd, adduser, qemu-utils, ${qemu_sys}, genisoimage
+Depends: systemd, adduser, qemu-utils, ${qemu_sys}, genisoimage, ethtool
 Description: API-driven tool for managing QEMU-based virtual machine instances
  qcontroller is a flexible, API-driven tool for managing QEMU-based
  virtual machine instances. Each node runs qemu, fileregistry,
