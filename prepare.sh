@@ -7,18 +7,24 @@ trap cleanup SIGINT SIGTERM ERR EXIT
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)
 
 function install_nvm() {
-    # Check if nvm is already installed
-    if command -v nvm >/dev/null 2>&1; then
-        echo "NVM is already installed."
-    else
-        echo "NVM not found. Installing..."
+    for dir in "${NVM_DIR:-$HOME/.nvm}" /home/runner/.nvm /root/.nvm; do
+        if [ -s "$dir/nvm.sh" ]; then
+            export NVM_DIR="$dir"
+            . "$dir/nvm.sh"
+            echo "NVM already installed at $dir"
+            return
+        fi
+    done
 
-        BASH_ENV=${HOME}/.bash_env
-        touch "${BASH_ENV}"
-        echo ". ${BASH_ENV}" >> ~/.bashrc
+    echo "NVM not found. Installing..."
 
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE="${BASH_ENV}" bash
-    fi
+    BASH_ENV=${HOME}/.bash_env
+    touch "${BASH_ENV}"
+    echo ". ${BASH_ENV}" >> ~/.bashrc
+
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE="${BASH_ENV}" bash
+
+    . "${BASH_ENV}"
 }
 
 cleanup() {
@@ -33,7 +39,5 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
 go install golang.org/x/vuln/cmd/govulncheck@latest
 
 install_nvm
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 nvm install 22
 npm install -g corepack
