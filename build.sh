@@ -27,7 +27,12 @@ function build_binaries() {
 
     UNAME_S="$(uname -s)"
     if [[ "$UNAME_S" == "Linux" ]]; then
-        go build -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
+        target_goos="${GOOS:-linux}"
+        if [[ "$target_goos" == "linux" ]]; then
+            CGO_ENABLED=1 go build -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
+        else
+            CGO_ENABLED=0 go build -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
+        fi
     elif [[ "$UNAME_S" == "Darwin" ]]; then
         # On macOS, build universal binary for amd64 and arm64
         ARCHS="amd64 arm64"
