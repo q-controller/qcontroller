@@ -51,26 +51,22 @@ func buildARPRequest(srcMAC net.HardwareAddr, srcIP, dstIP net.IP) []byte {
 	return buf
 }
 
-// parseARPReply extracts an ARP reply from a raw Ethernet frame.
-// Returns ok=false if the frame is not an ARP reply (see buildARPRequest for the frame layout;
-// [22:28] is the sender hardware address and [28:32] is the sender protocol address).
+// extractARPReply extracts the sender MAC and IP from a raw Ethernet frame.
+//
+// The frame is assumed to be a complete ARP reply: the kernel BPF filter
+// (see arpReplyFilter) only delivers frames whose EtherType is 0x0806, whose
+// ARP opcode is 2 (reply), and whose length is at least 42 bytes. This function
+// therefore performs no validation and only reads the sender fields (see
+// buildARPRequest for the frame layout; [22:28] is the sender hardware address
+// and [28:32] is the sender protocol address).
+//
 // MAC and IP are copied into new slices to avoid aliasing the read buffer.
-func parseARPReply(frame []byte) (arpReply, bool) {
-	if len(frame) < 42 {
-		return arpReply{}, false
-	}
-	if binary.BigEndian.Uint16(frame[12:14]) != 0x0806 { // not ARP
-		return arpReply{}, false
-	}
-	if binary.BigEndian.Uint16(frame[20:22]) != 2 { // not a reply
-		return arpReply{}, false
-	}
-
+func extractARPReply(frame []byte) arpReply {
 	mac := make(net.HardwareAddr, 6)
 	copy(mac, frame[22:28])
 
 	ip := make(net.IP, 4)
 	copy(ip, frame[28:32])
 
-	return arpReply{MAC: mac, IP: ip}, true
+	return arpReply{MAC: mac, IP: ip}
 }

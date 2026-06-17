@@ -31,48 +31,21 @@ func makeARPReplyFrame(senderMAC net.HardwareAddr, senderIP net.IP) []byte {
 	return buf
 }
 
-func TestParseARPReply_ValidReply(t *testing.T) {
+func TestExtractARPReply_ValidReply(t *testing.T) {
 	mac := net.HardwareAddr{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01}
 	ip := net.IP{192, 168, 1, 42}
 
-	reply, ok := parseARPReply(makeARPReplyFrame(mac, ip))
-	require.True(t, ok)
+	reply := extractARPReply(makeARPReplyFrame(mac, ip))
 	assert.Equal(t, mac.String(), reply.MAC.String())
 	assert.True(t, reply.IP.Equal(ip))
 }
 
-func TestParseARPReply_ARPRequest(t *testing.T) {
-	frame := makeARPReplyFrame(
-		net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
-		net.IP{10, 0, 0, 1},
-	)
-	// Change operation to request (1)
-	binary.BigEndian.PutUint16(frame[20:22], 1)
-
-	_, ok := parseARPReply(frame)
-	assert.False(t, ok)
-}
-
-func TestParseARPReply_NonARP(t *testing.T) {
-	frame := make([]byte, 42)
-	binary.BigEndian.PutUint16(frame[12:14], 0x0800) // IPv4, not ARP
-
-	_, ok := parseARPReply(frame)
-	assert.False(t, ok)
-}
-
-func TestParseARPReply_ShortFrame(t *testing.T) {
-	_, ok := parseARPReply(make([]byte, 41))
-	assert.False(t, ok)
-}
-
-func TestParseARPReply_CopiesData(t *testing.T) {
+func TestExtractARPReply_CopiesData(t *testing.T) {
 	mac := net.HardwareAddr{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}
 	ip := net.IP{172, 16, 0, 1}
 	frame := makeARPReplyFrame(mac, ip)
 
-	reply, ok := parseARPReply(frame)
-	require.True(t, ok)
+	reply := extractARPReply(frame)
 
 	// Mutate the original frame and verify reply is unaffected
 	frame[22] = 0x00
