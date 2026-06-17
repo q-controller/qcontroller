@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net"
 	"syscall"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 type linuxRawConn struct {
@@ -15,11 +18,32 @@ type linuxRawConn struct {
 
 // newRawConn opens an AF_PACKET raw socket bound to the given interface for raw ARP I/O.
 func newRawConn(iface *net.Interface) (rawConn, error) {
-	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(syscall.ETH_P_ARP)))
+	// Open with protocol 0 so the socket receives nothing yet. This lets us
+	// attach the BPF filter before binding: SO_ATTACH_FILTER only applies to
+	// packets received after it is set, so attaching it before any packet can
+	// be delivered avoids a window where unfiltered frames get queued.
+	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open AF_PACKET socket: %w", err)
 	}
 
+	raw, err := AssembleARPReplyFilter()
+	if err != nil {
+		_ = syscall.Close(fd)
+		return nil, fmt.Errorf("failed to assemble BPF filter: %w", err)
+	}
+	// bpf.RawInstruction and unix.SockFilter have identical memory layouts.
+	prog := &unix.SockFprog{
+		Len:    uint16(len(raw)),
+		Filter: (*unix.SockFilter)(unsafe.Pointer(&raw[0])),
+	}
+	if err := unix.SetsockoptSockFprog(fd, unix.SOL_SOCKET, unix.SO_ATTACH_FILTER, prog); err != nil {
+		_ = syscall.Close(fd)
+		return nil, fmt.Errorf("failed to attach BPF filter: %w", err)
+	}
+
+	// Bind to the interface and ARP protocol; reception starts here, with the
+	// filter already in place.
 	sockaddr := &syscall.SockaddrLinklayer{
 		Protocol: htons(syscall.ETH_P_ARP),
 		Ifindex:  iface.Index,
