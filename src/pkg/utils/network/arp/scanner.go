@@ -97,7 +97,7 @@ func (s *scannerImpl) Scan(timeout time.Duration) (map[string]net.IP, error) {
 		if currentBatch >= batchSize {
 			frames, _ := conn.Recv(buf)
 			for _, f := range frames {
-				if reply, ok := parseARPReply(f); ok && s.subnet.Contains(reply.IP) {
+				if reply := extractARPReply(f); s.subnet.Contains(reply.IP) {
 					currentHosts[reply.MAC.String()] = reply.IP
 				}
 			}
@@ -118,7 +118,7 @@ func (s *scannerImpl) Scan(timeout time.Duration) (map[string]net.IP, error) {
 		}
 
 		for _, f := range frames {
-			if reply, ok := parseARPReply(f); ok && s.subnet.Contains(reply.IP) {
+			if reply := extractARPReply(f); s.subnet.Contains(reply.IP) {
 				currentHosts[reply.MAC.String()] = reply.IP
 			}
 		}
