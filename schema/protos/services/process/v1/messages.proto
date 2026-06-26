@@ -53,3 +53,20 @@ message ListResponse {
 message RemoveRequest {
     string id = 1;
 }
+
+enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_STDOUT = 1;
+    KIND_STDERR = 2;
+}
+
+message LogsRequest {
+    string id = 1;
+}
+
+message LogsResponse {
+    Kind kind = 1;
+    string id = 2;
+    string data = 3;
+    bool rotated = 4;
+}

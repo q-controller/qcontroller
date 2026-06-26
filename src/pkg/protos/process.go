@@ -22,6 +22,8 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/utils/network"
 	"github.com/q-controller/qcontroller/src/pkg/utils/network/ip"
 	"github.com/q-controller/qemu-client/pkg/qemu"
+	"github.com/q-controller/qemu-client/pkg/utils"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -529,6 +531,46 @@ func (q *QemuServer) Remove(ctx context.Context, req *processv1.RemoveRequest) (
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+func (q *QemuServer) Logs(req *processv1.LogsRequest, stream grpc.ServerStreamingServer[processv1.LogsResponse]) error {
+	// Reject ids that aren't a single clean path element so they can't escape
+	// the instances dir (e.g. "../../something") via instanceDir's filepath.Join.
+	if req.Id == "" || req.Id == "." || req.Id == ".." || req.Id != filepath.Base(req.Id) {
+		return status.Errorf(codes.InvalidArgument, "invalid instance id %q", req.Id)
+	}
+
+	dir := q.instanceDir(req.Id)
+	if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
+		return status.Errorf(codes.NotFound, "instance %s not found", req.Id)
+	}
+
+	logTailer, logTailerErr := utils.NewLogTailer(stream.Context(), qemu.StdoutPath(dir), qemu.StderrPath(dir))
+	if logTailerErr != nil {
+		return status.Errorf(codes.Internal, "failed to create log tailer: %v", logTailerErr)
+	}
+
+	defer func() {
+		if closeErr := logTailer.Close(); closeErr != nil {
+			slog.Error("failed to close log tailer", "error", closeErr)
+		}
+	}()
+
+	for notification := range logTailer.Notifications() {
+		k := processv1.Kind_KIND_UNSPECIFIED
+		switch notification.Kind {
+		case utils.KindStdout:
+			k = processv1.Kind_KIND_STDOUT
+		case utils.KindStderr:
+			k = processv1.Kind_KIND_STDERR
+		case utils.KindUnknown:
+		}
+		if sendErr := stream.Send(&processv1.LogsResponse{Id: req.Id, Kind: k, Data: string(notification.Data), Rotated: notification.Reset}); sendErr != nil {
+			return status.Errorf(codes.Internal, "failed to send chunk: %v", sendErr)
+		}
+	}
+
+	return nil
 }
 
 func (q *QemuServer) reattachOnStartup() {
