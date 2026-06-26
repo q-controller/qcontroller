@@ -13,4 +13,5 @@ service QemuService {
     rpc Info(InfoRequest) returns (InfoResponse) {}
     rpc List(ListRequest) returns (ListResponse) {}
     rpc Remove(RemoveRequest) returns (google.protobuf.Empty) {}
+    rpc Logs(LogsRequest) returns (stream LogsResponse) {}
 }
