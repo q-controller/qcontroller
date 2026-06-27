@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	v1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller/db"
 	"github.com/q-controller/qcontroller/src/pkg/controller/vm"
 	"github.com/q-controller/qcontroller/src/pkg/events"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -76,6 +78,19 @@ func (s *Server) Info(ctx context.Context, request *controllerv1.InfoRequest) (*
 	return &controllerv1.InfoResponse{
 		Info: info,
 	}, nil
+}
+
+func (s *Server) Logs(request *v1.LogsRequest, stream grpc.ServerStreamingServer[v1.LogsResponse]) error {
+	ch, err := s.manager.Logs(stream.Context(), request)
+	if err != nil {
+		return err
+	}
+	for resp := range ch {
+		if sendErr := stream.Send(resp); sendErr != nil {
+			return sendErr
+		}
+	}
+	return nil
 }
 
 func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher) (controllerv1.ControllerServiceServer, error) {

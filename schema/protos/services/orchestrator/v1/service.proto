@@ -3,6 +3,7 @@ syntax = "proto3";
 package services.orchestrator.v1;
 
 import "services/orchestrator/v1/messages.proto";
+import "services/process/v1/messages.proto";
 import "google/protobuf/empty.proto";
 import "google/api/annotations.proto";
 
@@ -47,4 +48,6 @@ service OrchestratorService {
             get: "/v1/nodes"
         };
     }
+
+    rpc Logs(LogsRequest) returns (stream services.process.v1.LogsResponse) {}
 }

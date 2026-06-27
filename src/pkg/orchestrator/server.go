@@ -7,10 +7,12 @@ import (
 
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	orchestratorv1 "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/images"
 	"github.com/q-controller/qcontroller/src/pkg/node"
 	"github.com/q-controller/qcontroller/src/pkg/utils"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -162,6 +164,23 @@ func (s *Server) Info(ctx context.Context, req *orchestratorv1.InfoRequest) (*or
 	}
 
 	return &orchestratorv1.InfoResponse{Info: result}, nil
+}
+
+func (s *Server) Logs(req *orchestratorv1.LogsRequest, stream grpc.ServerStreamingServer[processv1.LogsResponse]) error {
+	_, nm, err := s.getNode(req.Node)
+	if err != nil {
+		return err
+	}
+	ch, chErr := nm.Logs(stream.Context(), &processv1.LogsRequest{Id: req.Name})
+	if chErr != nil {
+		return chErr
+	}
+	for resp := range ch {
+		if sendErr := stream.Send(resp); sendErr != nil {
+			return sendErr
+		}
+	}
+	return nil
 }
 
 func (s *Server) Close() {

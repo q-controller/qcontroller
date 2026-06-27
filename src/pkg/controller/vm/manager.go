@@ -9,6 +9,7 @@ import (
 	"time"
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/controller"
@@ -104,6 +105,10 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 
 func (m *Manager) Info(ctx context.Context, id string) ([]*controllerv1.Info, error) {
 	return m.nm.Info(ctx, id)
+}
+
+func (m *Manager) Logs(ctx context.Context, req *processv1.LogsRequest) (<-chan *processv1.LogsResponse, error) {
+	return m.nm.Logs(ctx, req)
 }
 
 func (m *Manager) Close() {

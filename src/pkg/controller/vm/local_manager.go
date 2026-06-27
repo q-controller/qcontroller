@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
@@ -213,6 +214,41 @@ func (n *localNodeManager) Info(ctx context.Context, name string) ([]*controller
 		n.batchEnrichWithRuntime(ctx, res, runningIDs)
 	}
 	return res, nil
+}
+
+func (n *localNodeManager) Logs(ctx context.Context, req *processv1.LogsRequest) (<-chan *processv1.LogsResponse, error) {
+	conn, err := n.dial()
+	if err != nil {
+		return nil, err
+	}
+
+	client, clientErr := processv1.NewQemuServiceClient(conn).Logs(ctx, req)
+	if clientErr != nil {
+		_ = conn.Close()
+		return nil, clientErr
+	}
+
+	out := make(chan *processv1.LogsResponse)
+	go func() {
+		defer close(out)
+		defer func() { _ = conn.Close() }()
+		for {
+			resp, recvErr := client.Recv()
+			if recvErr != nil {
+				if !errors.Is(recvErr, io.EOF) {
+					slog.Error("failed to receive logs from qemu", "instance", req.Id, "error", recvErr)
+				}
+				return
+			}
+			select {
+			case out <- resp:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return out, nil
 }
 
 func (n *localNodeManager) instanceToInfo(inst *vmv1.Instance) *controllerv1.Info {

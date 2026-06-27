@@ -2,7 +2,9 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
@@ -10,6 +12,7 @@ import (
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	orchestratorv1 "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
@@ -204,6 +207,34 @@ func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*controlle
 		return nil, fmt.Errorf("info on %s: %w", n.name, err)
 	}
 	return resp.Info, nil
+}
+
+func (n *remoteNodeManager) Logs(ctx context.Context, req *processv1.LogsRequest) (<-chan *processv1.LogsResponse, error) {
+	stream, err := n.client.Logs(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("logs on %s: %w", n.name, err)
+	}
+
+	ch := make(chan *processv1.LogsResponse)
+	go func() {
+		defer close(ch)
+		for {
+			resp, recvErr := stream.Recv()
+			if recvErr != nil {
+				if !errors.Is(recvErr, io.EOF) {
+					slog.ErrorContext(ctx, "Failed to receive log response", "node", n.name, "error", recvErr)
+				}
+				return
+			}
+			select {
+			case ch <- resp:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return ch, nil
 }
 
 // progressFile embeds *os.File and overrides Read to track upload progress.

@@ -36,6 +36,11 @@ message RemoveRequest {
     string name = 2;
 }
 
+message LogsRequest {
+    string node = 1;
+    string name = 2;
+}
+
 message Info {
     string node = 1;
     services.controller.v1.Info info = 2;
