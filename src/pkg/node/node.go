@@ -4,6 +4,7 @@ import (
 	"context"
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
 )
 
@@ -15,5 +16,6 @@ type Manager interface {
 	Stop(ctx context.Context, name string, force bool) error
 	Remove(ctx context.Context, name string) error
 	Info(ctx context.Context, name string) ([]*controllerv1.Info, error)
+	Logs(ctx context.Context, req *processv1.LogsRequest) (<-chan *processv1.LogsResponse, error)
 	Close()
 }

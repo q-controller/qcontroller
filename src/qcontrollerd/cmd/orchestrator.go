@@ -16,6 +16,7 @@ import (
 	authv1 "github.com/q-controller/qcontroller/src/generated/services/auth/v1"
 	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
 	orchestratorv1 "github.com/q-controller/qcontroller/src/generated/services/orchestrator/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/auth"
 	"github.com/q-controller/qcontroller/src/pkg/frontend"
@@ -26,6 +27,7 @@ import (
 	qUtils "github.com/q-controller/qcontroller/src/qcontrollerd/cmd/utils"
 	"github.com/spf13/cobra"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -144,6 +146,7 @@ var orchestratorCmd = &cobra.Command{
 			return fmt.Errorf("failed to register auth gateway: %w", err)
 		}
 		httpMux.HandleFunc("/ws", orchWsHandler(bc, allowedOrigin))
+		httpMux.HandleFunc("/ws/logs", orchLogsWsHandler(orchServer, allowedOrigin))
 		httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("ok\n"))
 		})
@@ -247,4 +250,75 @@ func orchWsHandler(bc *orchestrator.Broadcaster, allowedOrigin string) http.Hand
 			}
 		}
 	}
+}
+
+// orchLogsWsHandler streams one instance's logs over a dedicated WebSocket.
+// The instance is selected by ?node=&name= query params; the connection is the
+// subscription, so closing it cancels the stream down to the qemu node.
+func orchLogsWsHandler(srv *orchestrator.Server, allowedOrigin string) http.HandlerFunc {
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			if allowedOrigin == "" {
+				return true
+			}
+			return r.Header.Get("Origin") == allowedOrigin
+		},
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		nodeName := r.URL.Query().Get("node")
+		name := r.URL.Query().Get("name")
+		if nodeName == "" || name == "" {
+			http.Error(w, "node and name query params are required", http.StatusBadRequest)
+			return
+		}
+
+		conn, connErr := upgrader.Upgrade(w, r, nil)
+		if connErr != nil {
+			slog.ErrorContext(r.Context(), "Failed to upgrade logs WebSocket", "error", connErr)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+
+		// Reading is required to process control frames; a read error means the
+		// client closed the socket, so cancel the log stream.
+		go func() {
+			for {
+				if _, _, err := conn.ReadMessage(); err != nil {
+					cancel()
+					return
+				}
+			}
+		}()
+
+		// Reuse the gRPC Logs method with the WebSocket as the stream sink.
+		// ctx reaches Server.Logs via wsLogStream.Context(); contextcheck can't
+		// follow that interface indirection, so it's a false positive here.
+		if logsErr := srv.Logs( //nolint:contextcheck
+			&orchestratorv1.LogsRequest{Node: nodeName, Name: name},
+			&wsLogStream{ctx: ctx, conn: conn},
+		); logsErr != nil {
+			slog.WarnContext(ctx, "logs stream ended", "node", nodeName, "name", name, "error", logsErr)
+		}
+	}
+}
+
+// wsLogStream adapts a WebSocket to grpc.ServerStreamingServer so the gRPC Logs
+// handler can stream chunks to a browser.
+type wsLogStream struct {
+	grpc.ServerStream
+	ctx  context.Context
+	conn *websocket.Conn
+}
+
+func (s *wsLogStream) Context() context.Context { return s.ctx }
+
+func (s *wsLogStream) Send(resp *processv1.LogsResponse) error {
+	b, err := proto.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	return s.conn.WriteMessage(websocket.BinaryMessage, b)
 }
