@@ -15,4 +15,8 @@ service ControllerService {
     rpc Remove(RemoveRequest) returns (google.protobuf.Empty) {}
     rpc Info(InfoRequest) returns (InfoResponse) {}
     rpc Logs(services.process.v1.LogsRequest) returns (stream services.process.v1.LogsResponse) {}
+    rpc SnapshotSave(services.process.v1.SnapshotSaveRequest) returns (google.protobuf.Empty) {}
+    rpc SnapshotLoad(services.process.v1.SnapshotLoadRequest) returns (google.protobuf.Empty) {}
+    rpc SnapshotDelete(services.process.v1.SnapshotDeleteRequest) returns (google.protobuf.Empty) {}
+    rpc SnapshotList(services.process.v1.SnapshotListRequest) returns (services.process.v1.SnapshotListResponse) {}
 }

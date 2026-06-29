@@ -93,6 +93,35 @@ func (s *Server) Logs(request *v1.LogsRequest, stream grpc.ServerStreamingServer
 	return nil
 }
 
+func (s *Server) SnapshotSave(ctx context.Context, req *v1.SnapshotSaveRequest) (*emptypb.Empty, error) {
+	if _, err := s.manager.Snapshot(ctx, v1.SnapshotOp_SNAPSHOT_OP_SAVE, req.Id, req.Tag); err != nil {
+		return nil, status.Errorf(codes.Unknown, "failed to save snapshot: %v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) SnapshotLoad(ctx context.Context, req *v1.SnapshotLoadRequest) (*emptypb.Empty, error) {
+	if _, err := s.manager.Snapshot(ctx, v1.SnapshotOp_SNAPSHOT_OP_LOAD, req.Id, req.Tag); err != nil {
+		return nil, status.Errorf(codes.Unknown, "failed to load snapshot: %v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) SnapshotDelete(ctx context.Context, req *v1.SnapshotDeleteRequest) (*emptypb.Empty, error) {
+	if _, err := s.manager.Snapshot(ctx, v1.SnapshotOp_SNAPSHOT_OP_DELETE, req.Id, req.Tag); err != nil {
+		return nil, status.Errorf(codes.Unknown, "failed to delete snapshot: %v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) SnapshotList(ctx context.Context, req *v1.SnapshotListRequest) (*v1.SnapshotListResponse, error) {
+	snapshots, err := s.manager.Snapshot(ctx, v1.SnapshotOp_SNAPSHOT_OP_LIST, req.Id, "")
+	if err != nil {
+		return nil, err
+	}
+	return &v1.SnapshotListResponse{Snapshots: snapshots}, nil
+}
+
 func NewController(settings *settingsv1.ControllerConfig, eventPublisher *events.Publisher) (controllerv1.ControllerServiceServer, error) {
 	if mkdirErr := os.MkdirAll(filepath.Join(settings.Root, "db"), 0700); mkdirErr != nil {
 		return nil, mkdirErr

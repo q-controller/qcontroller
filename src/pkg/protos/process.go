@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/q-controller/qapi-client/src/client"
 	"github.com/q-controller/qapi-client/src/monitor"
 	"github.com/q-controller/qcontroller/src/generated/qapi"
@@ -30,6 +31,11 @@ import (
 )
 
 var ErrInstanceNotRunning = errors.New("instance not running")
+
+const (
+	snapshotPollInterval      = 500 * time.Millisecond
+	defaultSnapshotJobTimeout = 10 * time.Minute
+)
 
 type QemuServer struct {
 	processv1.UnimplementedQemuServiceServer
@@ -292,8 +298,17 @@ func (q *QemuServer) Stop(ctx context.Context,
 	return &emptypb.Empty{}, nil
 }
 
-// executeQMPCommand sends a QMP command and waits for the result.
+// executeQMPCommand sends a QMP command and waits up to 2s for the result.
 func (q *QemuServer) executeQMPCommand(ctx context.Context, id string, req client.Request) ([]byte, error) {
+	return q.executeQMPCommandWait(ctx, id, req, 2*time.Second)
+}
+
+// executeQMPCommandWait sends a QMP command and waits for the result. A
+// non-positive wait blocks until ctx is done. Long waits matter for snapshot
+// commands: QEMU runs the snapshot work synchronously in its main loop, which
+// also flushes QMP responses, so the reply may only arrive once the whole
+// operation finishes.
+func (q *QemuServer) executeQMPCommandWait(ctx context.Context, id string, req client.Request, wait time.Duration) ([]byte, error) {
 	ch := make(chan CommandResult)
 	q.commandCh <- Command{
 		ID:          id,
@@ -311,12 +326,189 @@ func (q *QemuServer) executeQMPCommand(ctx context.Context, id string, req clien
 		return nil, errors.New("no result from QMP command")
 	}
 
-	r, ok := res.Result.Get(ctx, 2*time.Second)
-	if !ok || r.Return == nil {
-		return nil, errors.New("timeout or empty response from QMP command")
+	r, ok := res.Result.Get(ctx, wait)
+	if !ok {
+		return nil, errors.New("timeout waiting for QMP response")
+	}
+	if r.Error != nil {
+		return nil, fmt.Errorf("QMP error [%s]: %s", r.Error.Class, r.Error.Description)
+	}
+	if r.Return == nil {
+		return nil, errors.New("empty response from QMP command")
 	}
 
 	return r.Return, nil
+}
+
+// snapshotStatusErr maps a snapshot error to a gRPC status. Snapshot save/load/
+// delete/list are live QMP operations, so a stopped instance is a precondition
+// failure rather than an internal error.
+func snapshotStatusErr(err error) error {
+	if errors.Is(err, ErrInstanceNotRunning) {
+		return status.Errorf(codes.FailedPrecondition, "instance is not running: %v", err)
+	}
+	return status.Errorf(codes.Internal, "%v", err)
+}
+
+// snapshotJobTimeout returns the configured cap for a snapshot job, falling
+// back to the built-in default when unset.
+func (q *QemuServer) snapshotJobTimeout() time.Duration {
+	if s := q.config.GetSnapshotJobTimeoutSeconds(); s > 0 {
+		return time.Duration(s) * time.Second
+	}
+	return defaultSnapshotJobTimeout
+}
+
+// runSnapshotJob issues an async snapshot QMP command and waits for its job to
+// conclude, returning any job error. QEMU snapshot jobs are created with
+// JOB_MANUAL_DISMISS, so a concluded job persists until we dismiss it — polling
+// query-jobs is therefore race-free.
+func (q *QemuServer) runSnapshotJob(ctx context.Context, id, jobID string, req client.Request) error {
+	ctx, cancel := context.WithTimeout(ctx, q.snapshotJobTimeout())
+	defer cancel()
+
+	// Wait for the command's reply as long as the job timeout allows: QEMU's
+	// main loop performs the snapshot synchronously and only flushes the QMP
+	// reply once it is done, so on large VMs the reply itself takes as long as
+	// the snapshot.
+	if _, err := q.executeQMPCommandWait(ctx, id, req, -1); err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(snapshotPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+
+		jobsReq, jobsErr := qapi.PrepareQueryJobsRequest()
+		if jobsErr != nil {
+			return jobsErr
+		}
+		raw, execErr := q.executeQMPCommand(ctx, id, client.Request(*jobsReq))
+		if execErr != nil {
+			// The instance going away is terminal; anything else (notably the
+			// monitor not answering while QEMU is busy applying the snapshot)
+			// is transient — keep polling until the job concludes or the
+			// overall timeout fires.
+			if errors.Is(execErr, ErrInstanceNotRunning) {
+				return execErr
+			}
+			slog.DebugContext(ctx, "snapshot job poll failed, retrying", "job", jobID, "error", execErr)
+			continue
+		}
+		var jobs qapi.JobInfoList
+		if err := json.Unmarshal(raw, &jobs); err != nil {
+			return err
+		}
+		for i := range jobs {
+			if jobs[i].Id != jobID || jobs[i].Status != qapi.JobStatusConcluded {
+				continue
+			}
+			jobErr := jobs[i].Error
+			// Dismiss the concluded job to free its slot (best effort).
+			if dismissReq, dismissErr := qapi.PrepareJobDismissRequest(qapi.QObjJobDismissArg{Id: jobID}); dismissErr == nil {
+				_, _ = q.executeQMPCommand(ctx, id, client.Request(*dismissReq))
+			}
+			if jobErr != nil {
+				return errors.New(*jobErr)
+			}
+			return nil
+		}
+	}
+}
+
+func (q *QemuServer) SnapshotSave(ctx context.Context, req *processv1.SnapshotSaveRequest) (*emptypb.Empty, error) {
+	if req.Tag == "" {
+		return nil, status.Error(codes.InvalidArgument, "snapshot tag is required")
+	}
+	jobID := "snap-" + uuid.NewString() // QEMU job ids must start with a letter
+	saveReq, prepErr := qapi.PrepareSnapshotSaveRequest(qapi.QObjSnapshotSaveArg{
+		JobId:   jobID,
+		Tag:     req.Tag,
+		Vmstate: qemu.OSDiskNodeName,
+		Devices: qapi.StrList{qemu.OSDiskNodeName},
+	})
+	if prepErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to prepare snapshot-save: %v", prepErr)
+	}
+	if err := q.runSnapshotJob(ctx, req.Id, jobID, client.Request(*saveReq)); err != nil {
+		return nil, snapshotStatusErr(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (q *QemuServer) SnapshotLoad(ctx context.Context, req *processv1.SnapshotLoadRequest) (*emptypb.Empty, error) {
+	if req.Tag == "" {
+		return nil, status.Error(codes.InvalidArgument, "snapshot tag is required")
+	}
+	jobID := "snap-" + uuid.NewString() // QEMU job ids must start with a letter
+	loadReq, prepErr := qapi.PrepareSnapshotLoadRequest(qapi.QObjSnapshotLoadArg{
+		JobId:   jobID,
+		Tag:     req.Tag,
+		Vmstate: qemu.OSDiskNodeName,
+		Devices: qapi.StrList{qemu.OSDiskNodeName},
+	})
+	if prepErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to prepare snapshot-load: %v", prepErr)
+	}
+	if err := q.runSnapshotJob(ctx, req.Id, jobID, client.Request(*loadReq)); err != nil {
+		return nil, snapshotStatusErr(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (q *QemuServer) SnapshotDelete(ctx context.Context, req *processv1.SnapshotDeleteRequest) (*emptypb.Empty, error) {
+	if req.Tag == "" {
+		return nil, status.Error(codes.InvalidArgument, "snapshot tag is required")
+	}
+	jobID := "snap-" + uuid.NewString() // QEMU job ids must start with a letter
+	deleteReq, prepErr := qapi.PrepareSnapshotDeleteRequest(qapi.QObjSnapshotDeleteArg{
+		JobId:   jobID,
+		Tag:     req.Tag,
+		Devices: qapi.StrList{qemu.OSDiskNodeName},
+	})
+	if prepErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to prepare snapshot-delete: %v", prepErr)
+	}
+	if err := q.runSnapshotJob(ctx, req.Id, jobID, client.Request(*deleteReq)); err != nil {
+		return nil, snapshotStatusErr(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (q *QemuServer) SnapshotList(ctx context.Context, req *processv1.SnapshotListRequest) (*processv1.SnapshotListResponse, error) {
+	nodesReq, prepErr := qapi.PrepareQueryNamedBlockNodesRequest(qapi.QObjQueryNamedBlockNodesArg{})
+	if prepErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to prepare query-named-block-nodes: %v", prepErr)
+	}
+	raw, execErr := q.executeQMPCommand(ctx, req.Id, client.Request(*nodesReq))
+	if execErr != nil {
+		return nil, snapshotStatusErr(execErr)
+	}
+	var nodes []qapi.BlockDeviceInfo
+	if err := json.Unmarshal(raw, &nodes); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to parse block nodes: %v", err)
+	}
+
+	snapshots := []*processv1.Snapshot{}
+	for i := range nodes {
+		if nodes[i].NodeName == nil || *nodes[i].NodeName != qemu.OSDiskNodeName || nodes[i].Image.Snapshots == nil {
+			continue
+		}
+		for _, s := range *nodes[i].Image.Snapshots {
+			snapshots = append(snapshots, &processv1.Snapshot{
+				Tag:         s.Name,
+				VmStateSize: uint64(s.VmStateSize),
+				DateSec:     int64(s.DateSec),
+			})
+		}
+	}
+	return &processv1.SnapshotListResponse{Snapshots: snapshots}, nil
 }
 
 // getMacAddressForInstance retrieves the MAC address for a VM instance via QMP.

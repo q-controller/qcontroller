@@ -14,4 +14,8 @@ service QemuService {
     rpc List(ListRequest) returns (ListResponse) {}
     rpc Remove(RemoveRequest) returns (google.protobuf.Empty) {}
     rpc Logs(LogsRequest) returns (stream LogsResponse) {}
+    rpc SnapshotSave(SnapshotSaveRequest) returns (google.protobuf.Empty) {}
+    rpc SnapshotLoad(SnapshotLoadRequest) returns (google.protobuf.Empty) {}
+    rpc SnapshotDelete(SnapshotDeleteRequest) returns (google.protobuf.Empty) {}
+    rpc SnapshotList(SnapshotListRequest) returns (SnapshotListResponse) {}
 }

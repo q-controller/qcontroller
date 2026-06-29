@@ -70,3 +70,41 @@ message LogsResponse {
     string data = 3;
     bool rotated = 4;
 }
+
+// SnapshotOp identifies a snapshot operation on a VM instance.
+enum SnapshotOp {
+    SNAPSHOT_OP_UNSPECIFIED = 0;
+    SNAPSHOT_OP_SAVE = 1;
+    SNAPSHOT_OP_LOAD = 2;
+    SNAPSHOT_OP_DELETE = 3;
+    SNAPSHOT_OP_LIST = 4;
+}
+
+message Snapshot {
+    string tag = 1;
+    uint64 vm_state_size = 2;
+    int64 date_sec = 3;
+}
+
+message SnapshotSaveRequest {
+    string id = 1;
+    string tag = 2;
+}
+
+message SnapshotLoadRequest {
+    string id = 1;
+    string tag = 2;
+}
+
+message SnapshotDeleteRequest {
+    string id = 1;
+    string tag = 2;
+}
+
+message SnapshotListRequest {
+    string id = 1;
+}
+
+message SnapshotListResponse {
+    repeated Snapshot snapshots = 1;
+}

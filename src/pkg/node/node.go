@@ -17,5 +17,8 @@ type Manager interface {
 	Remove(ctx context.Context, name string) error
 	Info(ctx context.Context, name string) ([]*controllerv1.Info, error)
 	Logs(ctx context.Context, req *processv1.LogsRequest) (<-chan *processv1.LogsResponse, error)
+	// Snapshot performs an in-place snapshot operation on a running instance.
+	// Save/Load/Delete return no snapshots; List returns the instance's snapshots.
+	Snapshot(ctx context.Context, op processv1.SnapshotOp, name, tag string) ([]*processv1.Snapshot, error)
 	Close()
 }

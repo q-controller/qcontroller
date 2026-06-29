@@ -140,6 +140,11 @@ message QemuConfig {
     // Default false: missing hardware acceleration is treated as a hard
     // error so production hosts don't silently run much slower.
     bool allow_emulation_fallback = 10;
+
+    // Maximum time a snapshot save/load/delete job may take before the
+    // operation is aborted. Save/load duration scales with guest RAM size.
+    // 0 means the built-in default (10 minutes).
+    uint32 snapshot_job_timeout_seconds = 11;
 }
 
 message EventServiceConfig {
