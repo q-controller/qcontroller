@@ -58,3 +58,26 @@ message Event {
 message ListNodesResponse {
     repeated settings.v1.Node nodes = 1;
 }
+
+message SnapshotSaveRequest {
+    string node = 1;
+    string name = 2;
+    string tag = 3;
+}
+
+message SnapshotLoadRequest {
+    string node = 1;
+    string name = 2;
+    string tag = 3;
+}
+
+message SnapshotDeleteRequest {
+    string node = 1;
+    string name = 2;
+    string tag = 3;
+}
+
+message SnapshotListRequest {
+    string node = 1;
+    string name = 2;
+}

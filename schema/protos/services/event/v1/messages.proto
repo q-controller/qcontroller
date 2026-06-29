@@ -4,6 +4,7 @@ package services.event.v1;
 
 import "services/controller/v1/messages.proto";
 import "services/fileregistry/v1/messages.proto";
+import "services/process/v1/messages.proto";
 
 option go_package = "github.com/q-controller/qcontroller/src/generated/services/event/v1;v1";
 
@@ -38,6 +39,22 @@ message ProgressEvent {
     int32 percent = 3;    // 0-100, -1 if unknown
 }
 
+// SnapshotEvent reports the lifecycle of an asynchronous snapshot operation
+// on a VM instance.
+message SnapshotEvent {
+    enum Phase {
+        PHASE_UNSPECIFIED = 0;
+        PHASE_STARTED = 1;
+        PHASE_COMPLETED = 2;
+        PHASE_FAILED = 3;
+    }
+    services.process.v1.SnapshotOp op = 1;
+    Phase phase = 2;
+    string instance = 3;
+    string tag = 4;
+    string message = 5;  // human-readable detail, e.g. the failure reason
+}
+
 message Update {
     int64 timestamp = 2;
     oneof payload {
@@ -45,6 +62,7 @@ message Update {
         ImageEvent image_event = 4;
         ErrorEvent error_event = 5;
         ProgressEvent progress_event = 6;
+        SnapshotEvent snapshot_event = 7;
     }
 }
 

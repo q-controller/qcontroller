@@ -190,6 +190,51 @@ func (s *Server) Close() {
 	}
 }
 
+func (s *Server) SnapshotSave(ctx context.Context, req *orchestratorv1.SnapshotSaveRequest) (*emptypb.Empty, error) {
+	_, nm, err := s.getNode(req.Node)
+	if err != nil {
+		return nil, err
+	}
+	if _, snapErr := nm.Snapshot(ctx, processv1.SnapshotOp_SNAPSHOT_OP_SAVE, req.Name, req.Tag); snapErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to save snapshot: %v", snapErr)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) SnapshotLoad(ctx context.Context, req *orchestratorv1.SnapshotLoadRequest) (*emptypb.Empty, error) {
+	_, nm, err := s.getNode(req.Node)
+	if err != nil {
+		return nil, err
+	}
+	if _, snapErr := nm.Snapshot(ctx, processv1.SnapshotOp_SNAPSHOT_OP_LOAD, req.Name, req.Tag); snapErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to load snapshot: %v", snapErr)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) SnapshotDelete(ctx context.Context, req *orchestratorv1.SnapshotDeleteRequest) (*emptypb.Empty, error) {
+	_, nm, err := s.getNode(req.Node)
+	if err != nil {
+		return nil, err
+	}
+	if _, snapErr := nm.Snapshot(ctx, processv1.SnapshotOp_SNAPSHOT_OP_DELETE, req.Name, req.Tag); snapErr != nil {
+		return nil, status.Errorf(codes.Internal, "failed to delete snapshot: %v", snapErr)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) SnapshotList(ctx context.Context, req *orchestratorv1.SnapshotListRequest) (*processv1.SnapshotListResponse, error) {
+	_, nm, err := s.getNode(req.Node)
+	if err != nil {
+		return nil, err
+	}
+	snapshots, listErr := nm.Snapshot(ctx, processv1.SnapshotOp_SNAPSHOT_OP_LIST, req.Name, "")
+	if listErr != nil {
+		return nil, listErr
+	}
+	return &processv1.SnapshotListResponse{Snapshots: snapshots}, nil
+}
+
 func (s *Server) ListNodes(_ context.Context, _ *emptypb.Empty) (*orchestratorv1.ListNodesResponse, error) {
 	out := make([]*settingsv1.Node, 0, len(s.nodes))
 	for name, nm := range s.nodes {

@@ -180,6 +180,33 @@ func (n *localNodeManager) Remove(ctx context.Context, name string) error {
 	return nil
 }
 
+func (n *localNodeManager) Snapshot(ctx context.Context, op processv1.SnapshotOp, name, tag string) ([]*processv1.Snapshot, error) {
+	conn, err := n.dial()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := processv1.NewQemuServiceClient(conn)
+	switch op {
+	case processv1.SnapshotOp_SNAPSHOT_OP_SAVE:
+		_, err = client.SnapshotSave(ctx, &processv1.SnapshotSaveRequest{Id: name, Tag: tag})
+	case processv1.SnapshotOp_SNAPSHOT_OP_LOAD:
+		_, err = client.SnapshotLoad(ctx, &processv1.SnapshotLoadRequest{Id: name, Tag: tag})
+	case processv1.SnapshotOp_SNAPSHOT_OP_DELETE:
+		_, err = client.SnapshotDelete(ctx, &processv1.SnapshotDeleteRequest{Id: name, Tag: tag})
+	case processv1.SnapshotOp_SNAPSHOT_OP_LIST:
+		resp, listErr := client.SnapshotList(ctx, &processv1.SnapshotListRequest{Id: name})
+		if listErr != nil {
+			return nil, listErr
+		}
+		return resp.Snapshots, nil
+	default:
+		return nil, fmt.Errorf("unknown snapshot op %q", op)
+	}
+	return nil, err
+}
+
 func (n *localNodeManager) Info(ctx context.Context, name string) ([]*controllerv1.Info, error) {
 	var instances []*vmv1.Instance
 	if name == "" {

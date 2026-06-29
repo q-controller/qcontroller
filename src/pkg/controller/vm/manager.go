@@ -9,6 +9,7 @@ import (
 	"time"
 
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
+	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	vmv1 "github.com/q-controller/qcontroller/src/generated/vm/statemachine/v1"
@@ -109,6 +110,46 @@ func (m *Manager) Info(ctx context.Context, id string) ([]*controllerv1.Info, er
 
 func (m *Manager) Logs(ctx context.Context, req *processv1.LogsRequest) (<-chan *processv1.LogsResponse, error) {
 	return m.nm.Logs(ctx, req)
+}
+
+// Snapshot performs a snapshot operation on an instance. List is synchronous and
+// returns the snapshots; Save/Load/Delete are fire-and-forget — they return
+// immediately and report completion or failure over the event stream.
+func (m *Manager) Snapshot(ctx context.Context, op processv1.SnapshotOp, id, tag string) ([]*processv1.Snapshot, error) {
+	if op == processv1.SnapshotOp_SNAPSHOT_OP_LIST {
+		return m.nm.Snapshot(ctx, op, id, tag)
+	}
+
+	go func() {
+		asyncCtx, cancel := utils.AsyncCtx(ctx, m.ctx.Done())
+		defer cancel()
+		label := snapshotOpLabel(op)
+		_ = m.eventsPublisher.PublishSnapshot(op, eventv1.SnapshotEvent_PHASE_STARTED, id, tag,
+			fmt.Sprintf("snapshot %q: %s started", tag, label))
+		if _, err := m.nm.Snapshot(asyncCtx, op, id, tag); err != nil {
+			slog.ErrorContext(asyncCtx, "snapshot operation failed", "op", op.String(), "id", id, "tag", tag, "error", err)
+			_ = m.eventsPublisher.PublishSnapshot(op, eventv1.SnapshotEvent_PHASE_FAILED, id, tag,
+				fmt.Sprintf("failed to %s snapshot %q: %v", label, tag, err))
+			return
+		}
+		_ = m.eventsPublisher.PublishSnapshot(op, eventv1.SnapshotEvent_PHASE_COMPLETED, id, tag,
+			fmt.Sprintf("snapshot %q: %s completed", tag, label))
+	}()
+	return nil, nil
+}
+
+// snapshotOpLabel is the human wording used in event messages.
+func snapshotOpLabel(op processv1.SnapshotOp) string {
+	switch op {
+	case processv1.SnapshotOp_SNAPSHOT_OP_SAVE:
+		return "save"
+	case processv1.SnapshotOp_SNAPSHOT_OP_LOAD:
+		return "restore"
+	case processv1.SnapshotOp_SNAPSHOT_OP_DELETE:
+		return "delete"
+	default:
+		return op.String()
+	}
 }
 
 func (m *Manager) Close() {

@@ -11,6 +11,7 @@ import (
 	controllerv1 "github.com/q-controller/qcontroller/src/generated/services/controller/v1"
 	eventv1 "github.com/q-controller/qcontroller/src/generated/services/event/v1"
 	fileregistryv1 "github.com/q-controller/qcontroller/src/generated/services/fileregistry/v1"
+	processv1 "github.com/q-controller/qcontroller/src/generated/services/process/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"github.com/q-controller/qcontroller/src/pkg/grpcutil"
 	"google.golang.org/protobuf/proto"
@@ -105,6 +106,24 @@ func (p *Publisher) PublishProgress(resource, message string, percent int32) err
 				Resource: resource,
 				Message:  message,
 				Percent:  percent,
+			},
+		},
+	}
+	return p.publish(&eventv1.PublishRequest{Update: update})
+}
+
+// PublishSnapshot reports a phase change of an asynchronous snapshot
+// operation on a VM instance.
+func (p *Publisher) PublishSnapshot(op processv1.SnapshotOp, phase eventv1.SnapshotEvent_Phase, instance, tag, message string) error {
+	update := &eventv1.Update{
+		Timestamp: time.Now().Unix(),
+		Payload: &eventv1.Update_SnapshotEvent{
+			SnapshotEvent: &eventv1.SnapshotEvent{
+				Op:       op,
+				Phase:    phase,
+				Instance: instance,
+				Tag:      tag,
+				Message:  message,
 			},
 		},
 	}

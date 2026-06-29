@@ -201,6 +201,30 @@ func (n *remoteNodeManager) Remove(ctx context.Context, name string) error {
 	return nil
 }
 
+func (n *remoteNodeManager) Snapshot(ctx context.Context, op processv1.SnapshotOp, name, tag string) ([]*processv1.Snapshot, error) {
+	var err error
+	switch op {
+	case processv1.SnapshotOp_SNAPSHOT_OP_SAVE:
+		_, err = n.client.SnapshotSave(ctx, &processv1.SnapshotSaveRequest{Id: name, Tag: tag})
+	case processv1.SnapshotOp_SNAPSHOT_OP_LOAD:
+		_, err = n.client.SnapshotLoad(ctx, &processv1.SnapshotLoadRequest{Id: name, Tag: tag})
+	case processv1.SnapshotOp_SNAPSHOT_OP_DELETE:
+		_, err = n.client.SnapshotDelete(ctx, &processv1.SnapshotDeleteRequest{Id: name, Tag: tag})
+	case processv1.SnapshotOp_SNAPSHOT_OP_LIST:
+		resp, listErr := n.client.SnapshotList(ctx, &processv1.SnapshotListRequest{Id: name})
+		if listErr != nil {
+			return nil, fmt.Errorf("snapshot list on %s: %w", n.name, listErr)
+		}
+		return resp.Snapshots, nil
+	default:
+		return nil, fmt.Errorf("unknown snapshot op %q", op)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("snapshot %s on %s: %w", op, n.name, err)
+	}
+	return nil, nil
+}
+
 func (n *remoteNodeManager) Info(ctx context.Context, name string) ([]*controllerv1.Info, error) {
 	resp, err := n.client.Info(ctx, &controllerv1.InfoRequest{Name: name})
 	if err != nil {

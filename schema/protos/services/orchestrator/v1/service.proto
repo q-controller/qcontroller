@@ -49,5 +49,31 @@ service OrchestratorService {
         };
     }
 
+    rpc SnapshotSave(SnapshotSaveRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/nodes/{node}/instances/{name}/snapshots"
+            body: "*"
+        };
+    }
+
+    rpc SnapshotList(SnapshotListRequest) returns (services.process.v1.SnapshotListResponse) {
+        option (google.api.http) = {
+            get: "/v1/nodes/{node}/instances/{name}/snapshots"
+        };
+    }
+
+    rpc SnapshotLoad(SnapshotLoadRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/v1/nodes/{node}/instances/{name}/snapshots/{tag}/load"
+            body: "*"
+        };
+    }
+
+    rpc SnapshotDelete(SnapshotDeleteRequest) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            delete: "/v1/nodes/{node}/instances/{name}/snapshots/{tag}"
+        };
+    }
+
     rpc Logs(LogsRequest) returns (stream services.process.v1.LogsResponse) {}
 }
