@@ -1,4 +1,4 @@
-FROM golang:1.25.11-bookworm AS pre-build
+FROM golang:1.25.12-bookworm AS pre-build
 
 ARG GROUP_ID
 ARG USER_ID
