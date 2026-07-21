@@ -37,6 +37,7 @@ cleanup() {
 # qcontroller-specific tools (lint, vuln scan).
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
 go install golang.org/x/vuln/cmd/govulncheck@latest
+go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.3
 
 install_nvm
 nvm install 22
