@@ -23,7 +23,7 @@ lint: frontend generate
 	golangci-lint run
 
 vulncheck: frontend generate
-	cd frontend && yarn audit --groups dependencies --level moderate
+	osv-scanner scan source -L frontend/yarn.lock -L go.mod
 	govulncheck ./...
 
 update-submodules:
