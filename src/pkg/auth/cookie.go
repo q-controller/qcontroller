@@ -38,11 +38,11 @@ func encodeSigned(secret []byte, v any, ttl time.Duration) (string, error) {
 
 // decodeSigned verifies the HMAC and expiry, then unmarshals into v.
 func decodeSigned(secret []byte, raw string, v any) error {
-	dot := strings.IndexByte(raw, '.')
-	if dot < 0 {
+	before, after, ok := strings.Cut(raw, ".")
+	if !ok {
 		return errors.New("malformed signed value")
 	}
-	enc, sig := raw[:dot], raw[dot+1:]
+	enc, sig := before, after
 
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(enc))

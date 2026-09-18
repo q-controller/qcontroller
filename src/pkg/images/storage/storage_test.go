@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -65,13 +66,7 @@ func TestLocalFilesystemBackend(t *testing.T) {
 		t.Fatalf("Failed to list images: %v", err)
 	}
 
-	found := false
-	for _, id := range imageIDs {
-		if id == imageID {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(imageIDs, imageID)
 	if !found {
 		t.Fatal("Image ID should be in the list")
 	}

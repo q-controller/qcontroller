@@ -22,7 +22,7 @@ function install_nvm() {
     touch "${BASH_ENV}"
     echo ". ${BASH_ENV}" >> ~/.bashrc
 
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE="${BASH_ENV}" bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | PROFILE="${BASH_ENV}" bash
 
     . "${BASH_ENV}"
 }
@@ -35,10 +35,10 @@ cleanup() {
 "${script_dir}/schema/prepare.sh"
 
 # qcontroller-specific tools (lint, vuln scan).
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
-go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.3
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
 
 install_nvm
-nvm install 22
+nvm install 26
 npm install -g corepack

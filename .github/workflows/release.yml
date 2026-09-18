@@ -18,24 +18,24 @@ jobs:
     steps:
       - name: Checkout code
         if: ${{ !env.ACT }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           ref: ${{ github.event.release.tag_name }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '26'
 
@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload .deb artifact
         if: ${{ !env.ACT }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qcontrollerd_${{ steps.version.outputs.version }}_${{ matrix.arch }}
           path: build/qcontrollerd_${{ steps.version.outputs.version }}_${{ matrix.arch }}.deb
@@ -69,14 +69,14 @@ jobs:
     steps:
       - name: Download artifacts
         if: ${{ !env.ACT }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
 
       - name: Upload to release
         if: ${{ !env.ACT }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: artifacts/*.deb

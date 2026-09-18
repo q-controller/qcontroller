@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log/slog"
+	"maps"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,12 +23,10 @@ var openAPISpecs string
 //go:embed docs/image-service-openapi.yml
 var imageServiceOpenAPISpecs string
 
-func mergeYAML(base, overlay map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
+func mergeYAML(base, overlay map[string]any) map[string]any {
+	result := make(map[string]any)
 	// Copy base
-	for k, v := range base {
-		result[k] = v
-	}
+	maps.Copy(result, base)
 	// Overlay on top
 	for k, v := range overlay {
 		if baseVal, ok := base[k]; ok {
@@ -44,12 +43,12 @@ func mergeYAML(base, overlay map[string]interface{}) map[string]interface{} {
 }
 
 func GenerateOpenAPISpecs() (string, error) {
-	var spec map[string]interface{}
+	var spec map[string]any
 	if err := yaml.Unmarshal([]byte(openAPISpecs), &spec); err != nil {
 		return "", fmt.Errorf("failed to unmarshal base OpenAPI spec: %w", err)
 	}
 
-	var imagesSpec map[string]interface{}
+	var imagesSpec map[string]any
 	if unmarshalErr := yaml.Unmarshal([]byte(imageServiceOpenAPISpecs), &imagesSpec); unmarshalErr != nil {
 		return "", fmt.Errorf("failed to unmarshal images OpenAPI spec: %w", unmarshalErr)
 	}

@@ -1,4 +1,4 @@
-FROM golang:1.25.14-bookworm AS pre-build
+FROM golang:1.27.1-bookworm AS pre-build
 
 ARG GROUP_ID
 ARG USER_ID
@@ -6,7 +6,9 @@ ARG NODE_OPTIONS=
 
 RUN apt update
 RUN apt install -y protobuf-compiler
-RUN apt install -y default-jre
+# openapi-generator runtime; pinned to 17 to match CI (setup-java), and
+# headless since it needs no AWT.
+RUN apt install -y openjdk-17-jre-headless
 # build-essential provides gcc / libc6-dev required by cgo (mattn/go-sqlite3
 # pulled in via coredhcp's range plugin). Without it `go build` silently
 # defaults to CGO_ENABLED=0 and the binary stubs out sqlite at runtime.
