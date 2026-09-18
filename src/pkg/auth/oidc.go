@@ -63,6 +63,20 @@ func (v *OIDCVerifier) cookieSecure() bool {
 	return strings.HasPrefix(v.externalURL, "https://")
 }
 
+// newCookie is the single place session/state cookies are built, so every
+// one carries HttpOnly, SameSite and Secure. Pass maxAge -1 to clear.
+func (v *OIDCVerifier) newCookie(name, value, path string, maxAge int) *http.Cookie {
+	return &http.Cookie{ //nolint:gosec // G124: Secure follows the external_url scheme; a literal true breaks plain-HTTP dev
+		Name:     name,
+		Value:    value,
+		Path:     path,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   v.cookieSecure(),
+		MaxAge:   maxAge,
+	}
+}
+
 // jwtExp parses the `exp` claim out of a JWT without verifying signature. The
 // signature was already verified at issue time; we just need the expiry to
 // decide when to refresh. Returns zero time if the token is malformed.
@@ -254,14 +268,7 @@ func (v *OIDCVerifier) Renewal(next http.Handler) http.Handler {
 					}
 				}
 				if !refreshed {
-					http.SetCookie(w, &http.Cookie{
-						Name:     sessionCookieName,
-						Path:     "/",
-						HttpOnly: true,
-						SameSite: http.SameSiteLaxMode,
-						Secure:   v.cookieSecure(),
-						MaxAge:   -1,
-					})
+					http.SetCookie(w, v.newCookie(sessionCookieName, "", "/", -1))
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -269,15 +276,7 @@ func (v *OIDCVerifier) Renewal(next http.Handler) http.Handler {
 		}
 
 		if encoded, encErr := encodeSigned(v.secret, sp, sessionTTL); encErr == nil {
-			http.SetCookie(w, &http.Cookie{
-				Name:     sessionCookieName,
-				Value:    encoded,
-				Path:     "/",
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-				Secure:   v.cookieSecure(),
-				MaxAge:   int(sessionTTL.Seconds()),
-			})
+			http.SetCookie(w, v.newCookie(sessionCookieName, encoded, "/", int(sessionTTL.Seconds())))
 		}
 
 		next.ServeHTTP(w, r)
@@ -315,15 +314,7 @@ func (v *OIDCVerifier) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "encode state cookie: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     stateCookieName,
-		Value:    encoded,
-		Path:     "/auth/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   v.cookieSecure(),
-		MaxAge:   int(stateTTL.Seconds()),
-	})
+	http.SetCookie(w, v.newCookie(stateCookieName, encoded, "/auth/", int(stateTTL.Seconds())))
 
 	http.Redirect(w, r, iss.oauth2.AuthCodeURL(state), http.StatusFound)
 }
@@ -384,21 +375,8 @@ func (v *OIDCVerifier) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "encode session cookie: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    sessionEncoded,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   v.cookieSecure(),
-		MaxAge:   int(sessionTTL.Seconds()),
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     stateCookieName,
-		Path:     "/auth/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	})
+	http.SetCookie(w, v.newCookie(sessionCookieName, sessionEncoded, "/", int(sessionTTL.Seconds())))
+	http.SetCookie(w, v.newCookie(stateCookieName, "", "/auth/", -1))
 
 	http.Redirect(w, r, "/ui/", http.StatusFound)
 }

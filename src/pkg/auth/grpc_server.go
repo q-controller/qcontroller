@@ -74,14 +74,7 @@ func (s *AuthServer) Logout(ctx context.Context, _ *emptypb.Empty) (*authv1.Logo
 	// header metadata to the HTTP response (see ForwardResponseOption in
 	// orchestrator wiring).
 	if s.v != nil {
-		clear := &http.Cookie{
-			Name:     sessionCookieName,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Secure:   s.v.cookieSecure(),
-			MaxAge:   -1,
-		}
+		clear := s.v.newCookie(sessionCookieName, "", "/", -1)
 		_ = grpc.SendHeader(ctx, metadata.Pairs("set-cookie", clear.String()))
 	}
 
