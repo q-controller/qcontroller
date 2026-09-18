@@ -665,7 +665,7 @@ func (q *QemuServer) getMemoryStatsForInstance(ctx context.Context, id string) *
 }
 
 func (q *QemuServer) Info(ctx context.Context, request *processv1.InfoRequest) (*processv1.InfoResponse, error) {
-	res := []*runtimev1.RuntimeInfo{}
+	res := make([]*runtimev1.RuntimeInfo, 0, len(request.Ids))
 	for _, id := range request.Ids {
 		info := &runtimev1.RuntimeInfo{
 			Name:        id,
