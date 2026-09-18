@@ -77,7 +77,7 @@ func (h *Handler) GetV1Images(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"images": images,
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

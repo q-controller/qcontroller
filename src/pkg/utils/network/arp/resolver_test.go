@@ -2,6 +2,7 @@ package arp
 
 import (
 	"context"
+	"maps"
 	"net"
 	"sync"
 	"testing"
@@ -27,9 +28,7 @@ func (m *mockScanner) Scan(timeout time.Duration) (map[string]net.IP, error) {
 	}
 	// Return a copy to avoid mutation issues
 	result := make(map[string]net.IP)
-	for k, v := range m.results {
-		result[k] = v
-	}
+	maps.Copy(result, m.results)
 	return result, nil
 }
 
@@ -54,7 +53,7 @@ func (m *mockScanner) getScanCount() int {
 // waitForInitialScan waits for the resolver to complete its initial scan.
 // Since the initial scan is async, we need to wait for it before testing.
 func waitForInitialScan(mock *mockScanner) {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if mock.getScanCount() > 0 {
 			return
 		}
@@ -70,8 +69,7 @@ func TestResolver_LookupIP_Found(t *testing.T) {
 		},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	resolver, err := NewResolver(ctx,
 		WithScanner(mock),
@@ -94,8 +92,7 @@ func TestResolver_LookupIP_NotFound(t *testing.T) {
 		},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	resolver, err := NewResolver(ctx,
 		WithScanner(mock),
@@ -115,8 +112,7 @@ func TestResolver_LookupIP_InvalidMAC(t *testing.T) {
 		results: map[string]net.IP{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	resolver, err := NewResolver(ctx,
 		WithScanner(mock),
@@ -139,8 +135,7 @@ func TestResolver_LookupIP_MACNormalization(t *testing.T) {
 		},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	resolver, err := NewResolver(ctx,
 		WithScanner(mock),
@@ -164,8 +159,7 @@ func TestResolver_UpdatesOnPeriodicScan(t *testing.T) {
 		},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	resolver, err := NewResolver(ctx,
 		WithScanner(mock),
@@ -209,8 +203,7 @@ func TestResolver_KeepsPreviousOnScanError(t *testing.T) {
 		},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	resolver, err := NewResolver(ctx,
 		WithScanner(mock),
@@ -244,8 +237,7 @@ func TestResolver_Stop(t *testing.T) {
 		results: map[string]net.IP{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	resolver, err := NewResolver(ctx,
 		WithScanner(mock),
