@@ -2,7 +2,7 @@ package orchestrator
 
 import (
 	"context"
-	"mime/multipart"
+	"io"
 	"os"
 	"testing"
 
@@ -27,7 +27,7 @@ func newMockImageClient(imgs []*imageservice.ImageInfo, data []byte) *mockImageC
 	}
 }
 
-func (m *mockImageClient) Upload(_ context.Context, name string, _ multipart.File) error {
+func (m *mockImageClient) Upload(_ context.Context, name string, _ io.Reader) error {
 	m.uploaded[name] = true
 	return nil
 }

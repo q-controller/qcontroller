@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"time"
@@ -18,7 +17,7 @@ type imageClientImpl struct {
 	cli v1.FileRegistryServiceClient
 }
 
-func (h *imageClientImpl) Upload(ctx context.Context, name string, file multipart.File) error {
+func (h *imageClientImpl) Upload(ctx context.Context, name string, file io.Reader) error {
 	stream, streamErr := h.cli.UploadImage(ctx)
 	if streamErr != nil {
 		return streamErr

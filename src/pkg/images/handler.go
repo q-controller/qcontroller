@@ -2,11 +2,17 @@ package images
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
 	imageservice "github.com/q-controller/qcontroller/src/generated/oapi"
 )
+
+// maxImageIDLen bounds the "id" form field; anything longer is not an image
+// name, and the part is read into memory.
+const maxImageIDLen = 256
 
 type Handler struct {
 	imageCli ImageClient
@@ -18,34 +24,56 @@ func (h *Handler) PostV1Images(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parseErr := r.ParseMultipartForm(10 << 20)
-	if parseErr != nil {
-		http.Error(w, "failed to parse form: "+parseErr.Error(), http.StatusBadRequest)
+	// Walk the multipart body part by part and stream the file straight to
+	// the registry.
+	mr, mrErr := r.MultipartReader()
+	if mrErr != nil {
+		http.Error(w, "failed to parse form: "+mrErr.Error(), http.StatusBadRequest)
 		return
 	}
 
-	id := r.FormValue("id")
-	if id == "" {
-		http.Error(w, "Missing id parameter", http.StatusBadRequest)
-		return
-	}
-
-	file, _, fileErr := r.FormFile("file")
-	if fileErr != nil {
-		http.Error(w, "Failed to retrieve file: "+fileErr.Error(), http.StatusBadRequest)
-		return
-	}
-
-	ctx := r.Context()
-	defer func() {
-		if err := file.Close(); err != nil {
-			slog.WarnContext(ctx, "Failed to close file", "error", err)
+	var id string
+	for {
+		part, partErr := mr.NextPart()
+		if errors.Is(partErr, io.EOF) {
+			if id == "" {
+				http.Error(w, "Missing id parameter", http.StatusBadRequest)
+			} else {
+				http.Error(w, "Missing file parameter", http.StatusBadRequest)
+			}
+			return
 		}
-	}()
+		if partErr != nil {
+			http.Error(w, "failed to parse form: "+partErr.Error(), http.StatusBadRequest)
+			return
+		}
 
-	if uploadErr := h.imageCli.Upload(r.Context(), id, file); uploadErr != nil {
-		http.Error(w, "Failed to upload file: "+uploadErr.Error(), http.StatusInternalServerError)
-		return
+		switch part.FormName() {
+		case "id":
+			raw, readErr := io.ReadAll(io.LimitReader(part, maxImageIDLen+1))
+			if readErr != nil {
+				http.Error(w, "failed to read id: "+readErr.Error(), http.StatusBadRequest)
+				return
+			}
+			if len(raw) == 0 || len(raw) > maxImageIDLen {
+				http.Error(w, "Missing id parameter", http.StatusBadRequest)
+				return
+			}
+			id = string(raw)
+		case "file":
+			// The client sends id before file (schema order); anything else
+			// would force buffering the file, so refuse it instead.
+			if id == "" {
+				http.Error(w, "Missing id parameter (must precede file)", http.StatusBadRequest)
+				return
+			}
+			if uploadErr := h.imageCli.Upload(r.Context(), id, part); uploadErr != nil {
+				http.Error(w, "Failed to upload file: "+uploadErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			return
+		}
+		// Unknown parts are skipped; NextPart discards the remainder.
 	}
 }
 
