@@ -85,8 +85,7 @@ ORCHESTRATOR_CONFIG=$(cat <<EOF
             "eventsEndpoint":       "localhost:${EVENTSERVICE_PORT}"
         }
     ],
-    "fileRegistryEndpoint": "localhost:${FILEREGISTRY_PORT}",
-    "exposeSwaggerUi":      true
+    "fileRegistryEndpoint": "localhost:${FILEREGISTRY_PORT}"
 }
 EOF
 )

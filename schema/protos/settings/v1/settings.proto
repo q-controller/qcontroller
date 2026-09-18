@@ -172,10 +172,9 @@ message OrchestratorConfig {
     uint32 port = 1;
     repeated Node nodes = 3;
     string file_registry_endpoint = 4;
-    bool expose_swagger_ui = 5;
-    TLSConfig file_registry_tls = 6;
-    TLSConfig tls = 7;
-    AuthConfig auth = 8;
+    TLSConfig file_registry_tls = 5;
+    TLSConfig tls = 6;
+    AuthConfig auth = 7;
 }
 
 message FileRegistryConfig {

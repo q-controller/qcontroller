@@ -176,8 +176,7 @@ EOF
             "eventsEndpoint":       "localhost:${EVENTSERVICE_PORT}"
         }
     ],
-    "fileRegistryEndpoint": "localhost:${FILEREGISTRY_PORT}",
-    "exposeSwaggerUi":      false
+    "fileRegistryEndpoint": "localhost:${FILEREGISTRY_PORT}"
 }
 EOF
 }
@@ -399,10 +398,6 @@ Services:
 Configs:  /etc/qcontrollerd/<service>/config.json
 Data:     /var/lib/qcontrollerd/<service>/
 Logs:     journalctl -u qcontrollerd-<service>
-
-Swagger UI is disabled by default. Enable it by setting
-'exposeSwaggerUi' to true in /etc/qcontrollerd/orchestrator/config.json
-and restarting qcontrollerd-orchestrator.
 
 If the qemu service can't find qemu/qemu-img/genisoimage on its PATH,
 pin absolute paths in /etc/qcontrollerd/qemu/config.json under a

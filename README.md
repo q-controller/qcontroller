@@ -37,7 +37,7 @@ The architecture separates node-level services from multi-node coordination. Eac
 - 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
 - **Real-time event streaming**: Live VM state changes via WebSocket at `/ws`, aggregated from all nodes by the orchestrator.
 - **Automatic image distribution**: Orchestrator pushes images to remote nodes before VM creation.
-- 📜 **Auto-generated OpenAPI schema**: Serves interactive API docs using [http-swagger](https://github.com/swaggo/http-swagger).
+- 📜 **Auto-generated OpenAPI schema**: Serves OpenAPI specs.
 - 🔒 **Optional mTLS and HTTPS**: gRPC services can run with mutual TLS, and the orchestrator can serve HTTPS — all opt-in via config.
 - 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
 
@@ -96,8 +96,6 @@ The package installs:
 
 A single dedicated `qcontroller` system user is created and used for the controller, fileregistry, eventservice and orchestrator services. The qemu service runs as root because it creates network namespaces and bridges.
 
-The Swagger UI is **disabled by default**; enable it by setting `exposeSwaggerUi: true` in `/etc/qcontrollerd/orchestrator/config.json` and restarting `qcontrollerd-orchestrator`.
-
 To remove (keeps configs):
 ```bash
 sudo apt remove qcontrollerd
@@ -124,7 +122,7 @@ The compiled binary provides the following subcommands:
 * `qemu` – Manages VM process execution. Requires root for networking (TAP on Linux, vmnet on macOS).
 * `controller` – Manages VM lifecycle on the local node. Polls QemuService for state changes and publishes them to the event service via gRPC.
 * `eventservice` – Standalone pub/sub hub for VM and image events. Controllers and file registries publish events to it; the orchestrator subscribes.
-* `orchestrator` – Coordinates multiple nodes. Subscribes to each node's event service, aggregates state, distributes images, and serves the REST API, WebSocket event stream, Swagger UI, and web frontend via gRPC-gateway.
+* `orchestrator` – Coordinates multiple nodes. Subscribes to each node's event service, aggregates state, distributes images, and serves the REST API, WebSocket event stream, and web frontend via gRPC-gateway.
 * `fileregistry` – Manages VM image storage. Provides chunked upload/download via gRPC. Runs on each node and on the orchestrator.
 
 > **Separation of Controller and QEMU**:
@@ -138,7 +136,7 @@ The compiled binary provides the following subcommands:
 #### Packaged Installation (macOS)
 If you installed via the macOS package, services are automatically started and managed by launchd. Access the API at:
 - Web UI: `http://localhost:8080/ui/`
-- Swagger UI: `http://localhost:8080/v1/swagger/index.html`
+- OpenAPI specs: `http://localhost:8080/openapi.yaml`
 
 #### Manual Execution
 Each subcommand expects a JSON configuration file matching its Protobuf [definitions](/src/protos/settings/v1/settings.proto).
@@ -166,9 +164,7 @@ Default service ports:
 
 Then access the interfaces:
 - Web UI: `http://localhost:8080/ui/`
-- Swagger UI: `http://localhost:8080/v1/swagger/index.html`
-
-<img src="./swagger.png" alt="swagger UI snapshot" width="900"/>
+- OpenAPI Specs: `http://localhost:8080/openapi.yaml`
 
 ## 🔒 TLS
 
@@ -233,10 +229,10 @@ See [qga](/qga/README.md) for details on building QGA.
 
 ## 📎 API Access
 
-The gRPC gateway automatically generates a Swagger-compatible OpenAPI schema. A basic Swagger UI is served at:
+The gRPC gateway automatically generates an OpenAPI schema that is served at:
 
 ```shell
-http://localhost:8080/v1/swagger/index.html
+http://localhost:8080/openapi.yaml
 ```
 
 For real-time VM state updates, connect to the WebSocket endpoint:

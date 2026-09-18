@@ -26,7 +26,6 @@ import (
 	"github.com/q-controller/qcontroller/src/pkg/utils"
 	qUtils "github.com/q-controller/qcontroller/src/qcontrollerd/cmd/utils"
 	"github.com/spf13/cobra"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
@@ -85,30 +84,18 @@ var orchestratorCmd = &cobra.Command{
 			return fmt.Errorf("failed to register orchestrator gateway: %w", err)
 		}
 
-		if config.ExposeSwaggerUi {
-			if specsErr := mux.HandlePath("GET", "/openapi.yaml", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
-				openAPISpecs, openAPISpecsErr := qUtils.GenerateOpenAPISpecs()
-				if openAPISpecsErr != nil {
-					slog.Warn("Failed to generate OpenAPI specs", "error", openAPISpecsErr)
-					http.Error(w, "Failed to generate OpenAPI specs", http.StatusInternalServerError)
-					return
-				}
-				if _, err := w.Write([]byte(openAPISpecs)); err != nil {
-					slog.Warn("Failed to write response", "error", err)
-				}
-			}); specsErr == nil {
-				if swaggerErr := mux.HandlePath("GET", "/v1/swagger/*", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
-					httpSwagger.Handler(
-						httpSwagger.URL("/openapi.yaml"),
-						httpSwagger.Layout("BaseLayout"),
-						httpSwagger.DefaultModelsExpandDepth(httpSwagger.HideModel),
-					)(w, r)
-				}); swaggerErr != nil {
-					slog.Warn("Failed to register swagger endpoint", "error", swaggerErr)
-				}
-			} else {
-				slog.Warn("Failed to register specs endpoint", "error", specsErr)
+		if specsErr := mux.HandlePath("GET", "/openapi.yaml", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+			openAPISpecs, openAPISpecsErr := qUtils.GenerateOpenAPISpecs()
+			if openAPISpecsErr != nil {
+				slog.Warn("Failed to generate OpenAPI specs", "error", openAPISpecsErr)
+				http.Error(w, "Failed to generate OpenAPI specs", http.StatusInternalServerError)
+				return
 			}
+			if _, err := w.Write([]byte(openAPISpecs)); err != nil {
+				slog.Warn("Failed to write response", "error", err)
+			}
+		}); specsErr != nil {
+			slog.Warn("Failed to register specs endpoint", "error", specsErr)
 		}
 
 		httpMux := http.NewServeMux()
