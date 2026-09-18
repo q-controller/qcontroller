@@ -339,8 +339,7 @@ cat >${CONFIGDIR}/orchestrator-config.json <<EOF
     "nodes": [
         {"name": "local", "endpoint": "localhost:${CONTROLLER_PORT}", "fileRegistryEndpoint": "${REGISTRY_ADDRESS}", "eventsEndpoint": "localhost:${EVENTSERVICE_PORT}"$(tls_block controllerTls orchestrator)$(tls_block fileRegistryTls orchestrator)$(tls_block eventsTls orchestrator)}
     ],
-    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}",
-    "exposeSwaggerUi": true$(tls_block fileRegistryTls orchestrator)$(tls_block tls orchestrator)$(auth_block)
+    "fileRegistryEndpoint": "${REGISTRY_ADDRESS}"$(tls_block fileRegistryTls orchestrator)$(tls_block tls orchestrator)$(auth_block)
 }
 EOF
 # May contain OIDC client_secret when --auth is used; restrict to owner.

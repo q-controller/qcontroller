@@ -48,7 +48,7 @@ func Middleware(verifiers []Verifier, exemptPrefixes ...string) func(http.Handle
 	}
 }
 
-// strictCSP is applied to every response except Swagger UI. 'unsafe-inline'
+// strictCSP is applied to every response. 'unsafe-inline'
 // for styles is required by Mantine's runtime CSS-in-JS; scripts stay strict.
 // WebSocket falls under connect-src 'self' (browsers treat same-origin ws:/wss:
 // as 'self').
@@ -65,7 +65,6 @@ const strictCSP = "default-src 'self'; " +
 // SecurityHeaders sets a strict CSP and other XSS/clickjacking-related
 // response headers on every request. HSTS is only sent when externalURL is
 // HTTPS so HTTP dev setups don't get locked into HTTPS by their own browser.
-// /v1/swagger/* is exempt from CSP because Swagger UI inlines its init script.
 func SecurityHeaders(externalURL string) func(http.Handler) http.Handler {
 	hsts := strings.HasPrefix(externalURL, "https://")
 	return func(next http.Handler) http.Handler {
@@ -77,9 +76,7 @@ func SecurityHeaders(externalURL string) func(http.Handler) http.Handler {
 			if hsts {
 				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			}
-			if !strings.HasPrefix(r.URL.Path, "/v1/swagger/") {
-				h.Set("Content-Security-Policy", strictCSP)
-			}
+			h.Set("Content-Security-Policy", strictCSP)
 			next.ServeHTTP(w, r)
 		})
 	}

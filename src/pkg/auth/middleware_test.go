@@ -198,20 +198,6 @@ func TestSecurityHeaders_HSTSOnlyForHTTPS(t *testing.T) {
 	}
 }
 
-func TestSecurityHeaders_CSPExemptForSwagger(t *testing.T) {
-	handler := SecurityHeaders("")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	for _, p := range []string{"/v1/swagger/index.html", "/v1/swagger/swagger-ui.css"} {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
-		assert.Empty(t, rec.Header().Get("Content-Security-Policy"), "path %s", p)
-		// Other headers still set even on swagger.
-		assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
-	}
-}
-
 // ---- Composed pipeline (smoke: SecurityHeaders → Middleware → CSRF → handler) ----
 
 func TestComposedPipeline_GETPasses(t *testing.T) {
