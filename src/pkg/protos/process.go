@@ -757,7 +757,7 @@ func (q *QemuServer) Logs(req *processv1.LogsRequest, stream grpc.ServerStreamin
 			k = processv1.Kind_KIND_STDERR
 		case utils.KindUnknown:
 		}
-		if sendErr := stream.Send(&processv1.LogsResponse{Id: req.Id, Kind: k, Data: string(notification.Data), Rotated: notification.Reset}); sendErr != nil {
+		if sendErr := stream.Send(&processv1.LogsResponse{Id: req.Id, Kind: k, Data: notification.Data, Rotated: notification.Reset}); sendErr != nil {
 			return status.Errorf(codes.Internal, "failed to send chunk: %v", sendErr)
 		}
 	}
