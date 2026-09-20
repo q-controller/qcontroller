@@ -67,7 +67,7 @@ message LogsRequest {
 message LogsResponse {
     Kind kind = 1;
     string id = 2;
-    string data = 3;
+    bytes data = 3;
     bool rotated = 4;
 }
 
