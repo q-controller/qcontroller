@@ -111,13 +111,12 @@ message ControllerConfig {
 // platform default (PATH lookup for binaries; qemu's name-based bios
 // resolution for the firmware).
 message QemuBinaries {
-    string qemu        = 1; // qemu-system-* (e.g. /opt/homebrew/bin/qemu-system-aarch64)
-    string qemu_img    = 2; // qemu-img
-    string iso_creator = 3; // genisoimage on linux, mkisofs on darwin
+    string qemu     = 1; // qemu-system-* (e.g. /opt/homebrew/bin/qemu-system-aarch64)
+    string qemu_img = 2; // qemu-img
     // Absolute path to the EDK2 firmware passed via -bios. Required on
     // distros where the file is not named edk2-aarch64-code.fd (e.g.
     // Debian/Ubuntu ship it as /usr/share/AAVMF/AAVMF_CODE.fd).
-    string bios        = 4;
+    string bios     = 3;
 }
 
 message QemuConfig {

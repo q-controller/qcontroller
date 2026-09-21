@@ -299,7 +299,7 @@ Architecture: ${ARCH}
 Maintainer: Nikita Vakula <programmistov.programmist@gmail.com>
 Section: admin
 Priority: optional
-Depends: systemd, adduser, qemu-utils, ${qemu_sys}, genisoimage, ethtool
+Depends: systemd, adduser, qemu-utils, ${qemu_sys}, ethtool
 Description: API-driven tool for managing QEMU-based virtual machine instances
  qcontroller is a flexible, API-driven tool for managing QEMU-based
  virtual machine instances. Each node runs qemu, fileregistry,
@@ -399,7 +399,7 @@ Configs:  /etc/qcontrollerd/<service>/config.json
 Data:     /var/lib/qcontrollerd/<service>/
 Logs:     journalctl -u qcontrollerd-<service>
 
-If the qemu service can't find qemu/qemu-img/genisoimage on its PATH,
+If the qemu service can't find qemu/qemu-img on its PATH,
 pin absolute paths in /etc/qcontrollerd/qemu/config.json under a
 'binaries' block, then:
   sudo systemctl restart qcontrollerd-qemu

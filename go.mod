@@ -42,6 +42,8 @@ require (
 	github.com/coredns/caddy v1.1.4 // indirect
 	github.com/coredns/coredns v1.14.7 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.4.2 // indirect
+	github.com/diskfs/go-diskfs v1.9.4 // indirect
+	github.com/djherbis/times v1.6.0 // indirect
 	github.com/dnstap/golang-dnstap v0.4.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/farsightsec/golang-framestream v0.3.0 // indirect
