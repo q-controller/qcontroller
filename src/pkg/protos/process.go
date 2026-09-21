@@ -242,10 +242,9 @@ func (q *QemuServer) Start(ctx context.Context,
 	binaries := qemu.Binaries{}
 	if b := q.config.GetBinaries(); b != nil {
 		binaries = qemu.Binaries{
-			Qemu:       b.GetQemu(),
-			QemuImg:    b.GetQemuImg(),
-			IsoCreator: b.GetIsoCreator(),
-			Bios:       b.GetBios(),
+			Qemu:    b.GetQemu(),
+			QemuImg: b.GetQemuImg(),
+			Bios:    b.GetBios(),
 		}
 	}
 
