@@ -209,6 +209,65 @@ curl --cacert ./build/run/certs/ca.pem https://localhost:8080/v1/nodes
 
 `--certs` is strictly for development. In production, use a proper PKI (internal CA, Let's Encrypt, or cert-manager in Kubernetes) and point the `tls` blocks at those certs.
 
+## Authentication
+
+The orchestrator can require users to log in through an OpenID Connect (OIDC) provider such as Keycloak, Dex, Okta, etc. Authentication is on when the orchestrator config has an `auth` block and off when it does not. Without it, every request is anonymous and the `/v1/auth/*` endpoints are not served.
+
+Two ways to authenticate:
+- **Browser**: the web UI redirects to the provider, and after login the orchestrator sets a signed, HttpOnly session cookie. Tokens are never exposed to page scripts.
+- **Bearer token**: send an ID token from any configured issuer in the `Authorization: Bearer ...` header. Useful for scripts and CI. The token's `aud` must match the issuer's `audience` (or `client_id` when `audience` is not set).
+
+Example `auth` block with one issuer for browser login and one bearer-only issuer for CI:
+
+```json
+"auth": {
+    "external_url": "https://qcontroller.example.com",
+    "issuers": [
+        {
+            "name": "keycloak",
+            "display_name": "Company SSO",
+            "issuer_url": "https://sso.example.com/realms/main",
+            "client_id": "qcontroller",
+            "client_secret": "..."
+        },
+        {
+            "name": "github-actions",
+            "issuer_url": "https://token.actions.githubusercontent.com",
+            "audience": "qcontroller"
+        }
+    ]
+}
+```
+
+An issuer with a `client_id` appears on the login page; one without is bearer-only. Every issuer needs an `audience` or a `client_id`. For all fields check [OIDCIssuer](/schema/protos/settings/v1/settings.proto).
+
+Register these URLs at the provider:
+- Redirect URI: `<external_url>/auth/callback`
+- Post-logout redirect URI: `<external_url>/ui/`
+
+The session secret used to sign cookies is generated on first start and stored next to the config file as `session.key`. The browser session lasts `session_ttl_seconds` (default 8 hours, renewed on every request) and a started login must complete within `login_ttl_seconds` (default 10 minutes).
+
+### Dev setup with `--auth`
+
+`start.sh --auth` reads the issuer from environment variables and injects the `auth` block for you. For local development, the easiest provider is [mock-oauth2-server](https://github.com/navikt/mock-oauth2-server).
+
+Start it on port 9090:
+
+```shell
+docker run -d --name qc-fake-oidc -p 9090:9090 -e SERVER_PORT=9090 \
+    ghcr.io/navikt/mock-oauth2-server:latest
+```
+
+Then start qcontroller:
+
+```shell
+OIDC_ISSUER_URL=http://localhost:9090/default \
+OIDC_CLIENT_ID=qcontroller \
+OIDC_CLIENT_SECRET=anything \
+OIDC_PROVIDER_NAME=fake \
+./start.sh --auth --rundir ./build/run --bin ./build/qcontrollerd
+```
+
 ## Example Base Image
 
 This repo includes tooling to build a base Ubuntu Cloud image with the QEMU Guest Agent (QGA), compatible with qcontroller's QAPI integration.
