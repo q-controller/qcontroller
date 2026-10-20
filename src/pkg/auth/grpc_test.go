@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	v1 "github.com/q-controller/qcontroller/src/generated/services/auth/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -22,7 +23,7 @@ func fakeInvoker(seenCtx *context.Context) grpc.UnaryInvoker {
 func TestUnaryClientInterceptor_AddsMetadataWhenIdentityPresent(t *testing.T) {
 	icpt := UnaryClientInterceptor()
 
-	ctx := WithIdentity(context.Background(), &Identity{
+	ctx := WithIdentity(context.Background(), &v1.Identity{
 		Subject:  "alice-uuid",
 		Email:    "alice@example.com",
 		Name:     "Alice",
@@ -43,7 +44,7 @@ func TestUnaryClientInterceptor_AddsMetadataWhenIdentityPresent(t *testing.T) {
 func TestUnaryClientInterceptor_OmitsEmptyOptionalFields(t *testing.T) {
 	icpt := UnaryClientInterceptor()
 
-	ctx := WithIdentity(context.Background(), &Identity{
+	ctx := WithIdentity(context.Background(), &v1.Identity{
 		Subject:  "alice-uuid",
 		IssuedBy: "oidc:keycloak",
 		// Email and Name intentionally empty.
@@ -79,7 +80,7 @@ func TestUnaryClientInterceptor_PreservesExistingOutgoingMetadata(t *testing.T) 
 	icpt := UnaryClientInterceptor()
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), "traceparent", "00-abc-xyz-01")
-	ctx = WithIdentity(ctx, &Identity{Subject: "alice", IssuedBy: "oidc:t"})
+	ctx = WithIdentity(ctx, &v1.Identity{Subject: "alice", IssuedBy: "oidc:t"})
 
 	var seen context.Context
 	require.NoError(t, icpt(ctx, "/x", nil, nil, nil, fakeInvoker(&seen)))
@@ -108,7 +109,7 @@ func TestUnaryServerInterceptor_ExtractsIdentity(t *testing.T) {
 
 	got, err := icpt(ctx, nil, &grpc.UnaryServerInfo{}, handler)
 	require.NoError(t, err)
-	id := got.(*Identity)
+	id := got.(*v1.Identity)
 	require.NotNil(t, id)
 	assert.Equal(t, "bob-uuid", id.Subject)
 	assert.Equal(t, "oidc:keycloak", id.IssuedBy)
@@ -148,7 +149,7 @@ func TestUnaryServerInterceptor_MissingSubjectLeavesIdentityNil(t *testing.T) {
 
 func TestClientServerInterceptors_RoundTrip(t *testing.T) {
 	// Client side: stamp Identity onto outgoing metadata.
-	clientCtx := WithIdentity(context.Background(), &Identity{
+	clientCtx := WithIdentity(context.Background(), &v1.Identity{
 		Subject:  "alice-uuid",
 		Email:    "alice@example.com",
 		Name:     "Alice",
@@ -168,7 +169,7 @@ func TestClientServerInterceptors_RoundTrip(t *testing.T) {
 	}
 	got, err := UnaryServerInterceptor()(serverCtx, nil, &grpc.UnaryServerInfo{}, handler)
 	require.NoError(t, err)
-	id := got.(*Identity)
+	id := got.(*v1.Identity)
 	require.NotNil(t, id)
 	assert.Equal(t, "alice-uuid", id.Subject)
 	assert.Equal(t, "oidc:keycloak", id.IssuedBy)
