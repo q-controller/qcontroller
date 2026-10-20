@@ -18,14 +18,14 @@ import (
 func subscribeToNodeEvents(ctx context.Context, n *settingsv1.Node, bc *orchestrator.Broadcaster) {
 	controllerConn, controllerConnErr := grpcutil.Dial(n.Endpoint, grpcutil.WithTLS(n.ControllerTls))
 	if controllerConnErr != nil {
-		slog.Error("Failed to connect to controller", "node", n.Name, "error", controllerConnErr)
+		slog.ErrorContext(ctx, "Failed to connect to controller", "node", n.Name, "error", controllerConnErr)
 		return
 	}
 	defer func() { _ = controllerConn.Close() }()
 
 	eventsConn, eventsConnErr := grpcutil.Dial(n.EventsEndpoint, grpcutil.WithTLS(n.EventsTls))
 	if eventsConnErr != nil {
-		slog.Error("Failed to connect to event service", "node", n.Name, "error", eventsConnErr)
+		slog.ErrorContext(ctx, "Failed to connect to event service", "node", n.Name, "error", eventsConnErr)
 		return
 	}
 	defer func() { _ = eventsConn.Close() }()
@@ -45,7 +45,7 @@ func subscribeToNodeEvents(ctx context.Context, n *settingsv1.Node, bc *orchestr
 
 		stream, streamErr := eventCli.Subscribe(ctx, &eventv1.SubscribeRequest{})
 		if streamErr != nil {
-			slog.Debug("Failed to subscribe to node events, retrying", "node", n.Name, "error", streamErr)
+			slog.DebugContext(ctx, "Failed to subscribe to node events, retrying", "node", n.Name, "error", streamErr)
 			select {
 			case <-ctx.Done():
 				return
@@ -54,13 +54,13 @@ func subscribeToNodeEvents(ctx context.Context, n *settingsv1.Node, bc *orchestr
 			continue
 		}
 
-		slog.Info("Subscribed to node events", "node", n.Name, "endpoint", n.EventsEndpoint)
+		slog.InfoContext(ctx, "Subscribed to node events", "node", n.Name, "endpoint", n.EventsEndpoint)
 
 		for {
 			resp, recvErr := stream.Recv()
 			if recvErr != nil {
 				if !errors.Is(recvErr, io.EOF) {
-					slog.Warn("Node event stream lost, reconnecting", "node", n.Name, "error", recvErr)
+					slog.WarnContext(ctx, "Node event stream lost, reconnecting", "node", n.Name, "error", recvErr)
 				}
 				break
 			}
@@ -87,7 +87,7 @@ func subscribeToNodeEvents(ctx context.Context, n *settingsv1.Node, bc *orchestr
 func seedNodeState(ctx context.Context, nodeName string, cli controllerv1.ControllerServiceClient, bc *orchestrator.Broadcaster) {
 	resp, err := cli.Info(ctx, &controllerv1.InfoRequest{})
 	if err != nil {
-		slog.Debug("Failed to seed node state", "node", nodeName, "error", err)
+		slog.DebugContext(ctx, "Failed to seed node state", "node", nodeName, "error", err)
 		return
 	}
 

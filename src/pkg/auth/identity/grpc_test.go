@@ -1,4 +1,4 @@
-package auth
+package identity
 
 import (
 	"context"
@@ -23,11 +23,12 @@ func fakeInvoker(seenCtx *context.Context) grpc.UnaryInvoker {
 func TestUnaryClientInterceptor_AddsMetadataWhenIdentityPresent(t *testing.T) {
 	icpt := UnaryClientInterceptor()
 
-	ctx := WithIdentity(context.Background(), &v1.Identity{
+	ctx := WithContext(context.Background(), &v1.Identity{
 		Subject:  "alice-uuid",
 		Email:    "alice@example.com",
 		Name:     "Alice",
-		IssuedBy: "oidc:keycloak",
+		Groups:   []string{"admins", "devs"},
+		IssuedBy: "keycloak",
 	})
 
 	var seen context.Context
@@ -36,18 +37,19 @@ func TestUnaryClientInterceptor_AddsMetadataWhenIdentityPresent(t *testing.T) {
 	md, ok := metadata.FromOutgoingContext(seen)
 	require.True(t, ok)
 	assert.Equal(t, []string{"alice-uuid"}, md.Get(mdSubject))
-	assert.Equal(t, []string{"oidc:keycloak"}, md.Get(mdIssuedBy))
+	assert.Equal(t, []string{"keycloak"}, md.Get(mdIssuedBy))
 	assert.Equal(t, []string{"alice@example.com"}, md.Get(mdEmail))
 	assert.Equal(t, []string{"Alice"}, md.Get(mdName))
+	assert.Equal(t, []string{"admins", "devs"}, md.Get(mdGroups))
 }
 
 func TestUnaryClientInterceptor_OmitsEmptyOptionalFields(t *testing.T) {
 	icpt := UnaryClientInterceptor()
 
-	ctx := WithIdentity(context.Background(), &v1.Identity{
+	ctx := WithContext(context.Background(), &v1.Identity{
 		Subject:  "alice-uuid",
-		IssuedBy: "oidc:keycloak",
-		// Email and Name intentionally empty.
+		IssuedBy: "keycloak",
+		// Email, Name, and Groups intentionally empty.
 	})
 
 	var seen context.Context
@@ -58,21 +60,7 @@ func TestUnaryClientInterceptor_OmitsEmptyOptionalFields(t *testing.T) {
 	assert.Equal(t, []string{"alice-uuid"}, md.Get(mdSubject))
 	assert.Empty(t, md.Get(mdEmail))
 	assert.Empty(t, md.Get(mdName))
-}
-
-func TestUnaryClientInterceptor_SkipsAnonymous(t *testing.T) {
-	icpt := UnaryClientInterceptor()
-
-	ctx := WithIdentity(context.Background(), Anonymous())
-
-	var seen context.Context
-	require.NoError(t, icpt(ctx, "/x", nil, nil, nil, fakeInvoker(&seen)))
-
-	// No outgoing metadata should be set for anonymous identity.
-	md, ok := metadata.FromOutgoingContext(seen)
-	if ok {
-		assert.Empty(t, md.Get(mdSubject))
-	}
+	assert.Empty(t, md.Get(mdGroups))
 }
 
 func TestUnaryClientInterceptor_PreservesExistingOutgoingMetadata(t *testing.T) {
@@ -80,7 +68,7 @@ func TestUnaryClientInterceptor_PreservesExistingOutgoingMetadata(t *testing.T) 
 	icpt := UnaryClientInterceptor()
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), "traceparent", "00-abc-xyz-01")
-	ctx = WithIdentity(ctx, &v1.Identity{Subject: "alice", IssuedBy: "oidc:t"})
+	ctx = WithContext(ctx, &v1.Identity{Subject: "alice", IssuedBy: "t"})
 
 	var seen context.Context
 	require.NoError(t, icpt(ctx, "/x", nil, nil, nil, fakeInvoker(&seen)))
@@ -98,9 +86,10 @@ func TestUnaryServerInterceptor_ExtractsIdentity(t *testing.T) {
 
 	md := metadata.MD{}
 	md.Set(mdSubject, "bob-uuid")
-	md.Set(mdIssuedBy, "oidc:keycloak")
+	md.Set(mdIssuedBy, "keycloak")
 	md.Set(mdEmail, "bob@example.com")
 	md.Set(mdName, "Bob")
+	md.Set(mdGroups, "ops", "sre")
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	handler := func(ctx context.Context, _ any) (any, error) {
@@ -112,9 +101,10 @@ func TestUnaryServerInterceptor_ExtractsIdentity(t *testing.T) {
 	id := got.(*v1.Identity)
 	require.NotNil(t, id)
 	assert.Equal(t, "bob-uuid", id.Subject)
-	assert.Equal(t, "oidc:keycloak", id.IssuedBy)
+	assert.Equal(t, "keycloak", id.IssuedBy)
 	assert.Equal(t, "bob@example.com", id.Email)
 	assert.Equal(t, "Bob", id.Name)
+	assert.Equal(t, []string{"ops", "sre"}, id.Groups)
 }
 
 func TestUnaryServerInterceptor_NoMetadataLeavesIdentityNil(t *testing.T) {
@@ -145,15 +135,68 @@ func TestUnaryServerInterceptor_MissingSubjectLeavesIdentityNil(t *testing.T) {
 	assert.Nil(t, got)
 }
 
+// ---- Stream ----
+
+type fakeServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *fakeServerStream) Context() context.Context { return s.ctx }
+
+type fakeClientStream struct{ grpc.ClientStream }
+
+func TestStreamClientServerInterceptors_RoundTrip(t *testing.T) {
+	clientCtx := WithContext(context.Background(), &v1.Identity{
+		Subject:  "alice-uuid",
+		Email:    "alice@example.com",
+		IssuedBy: "keycloak",
+	})
+	var fwd context.Context
+	streamer := func(ctx context.Context, _ *grpc.StreamDesc, _ *grpc.ClientConn, _ string, _ ...grpc.CallOption) (grpc.ClientStream, error) {
+		fwd = ctx
+		return &fakeClientStream{}, nil
+	}
+	_, err := StreamClientInterceptor()(clientCtx, &grpc.StreamDesc{}, nil, "/x", streamer)
+	require.NoError(t, err)
+
+	md, ok := metadata.FromOutgoingContext(fwd)
+	require.True(t, ok)
+	ss := &fakeServerStream{ctx: metadata.NewIncomingContext(context.Background(), md)}
+
+	var got *v1.Identity
+	handler := func(_ any, ss grpc.ServerStream) error {
+		got = FromContext(ss.Context())
+		return nil
+	}
+	require.NoError(t, StreamServerInterceptor()(nil, ss, &grpc.StreamServerInfo{}, handler))
+	require.NotNil(t, got)
+	assert.Equal(t, "alice-uuid", got.Subject)
+	assert.Equal(t, "alice@example.com", got.Email)
+	assert.Equal(t, "keycloak", got.IssuedBy)
+}
+
+func TestStreamServerInterceptor_NoMetadataLeavesIdentityNil(t *testing.T) {
+	ss := &fakeServerStream{ctx: context.Background()}
+	var got *v1.Identity
+	handler := func(_ any, ss grpc.ServerStream) error {
+		got = FromContext(ss.Context())
+		return nil
+	}
+	require.NoError(t, StreamServerInterceptor()(nil, ss, &grpc.StreamServerInfo{}, handler))
+	assert.Nil(t, got)
+}
+
 // ---- Round-trip ----
 
 func TestClientServerInterceptors_RoundTrip(t *testing.T) {
 	// Client side: stamp Identity onto outgoing metadata.
-	clientCtx := WithIdentity(context.Background(), &v1.Identity{
+	clientCtx := WithContext(context.Background(), &v1.Identity{
 		Subject:  "alice-uuid",
 		Email:    "alice@example.com",
 		Name:     "Alice",
-		IssuedBy: "oidc:keycloak",
+		Groups:   []string{"admins", "users"},
+		IssuedBy: "keycloak",
 	})
 	var fwd context.Context
 	require.NoError(t, UnaryClientInterceptor()(clientCtx, "/x", nil, nil, nil, fakeInvoker(&fwd)))
@@ -172,7 +215,8 @@ func TestClientServerInterceptors_RoundTrip(t *testing.T) {
 	id := got.(*v1.Identity)
 	require.NotNil(t, id)
 	assert.Equal(t, "alice-uuid", id.Subject)
-	assert.Equal(t, "oidc:keycloak", id.IssuedBy)
+	assert.Equal(t, "keycloak", id.IssuedBy)
 	assert.Equal(t, "alice@example.com", id.Email)
 	assert.Equal(t, "Alice", id.Name)
+	assert.Equal(t, []string{"admins", "users"}, id.Groups)
 }

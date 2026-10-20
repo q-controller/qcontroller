@@ -7,7 +7,7 @@ import (
 	"os"
 
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
-	"github.com/q-controller/qcontroller/src/pkg/auth"
+	"github.com/q-controller/qcontroller/src/pkg/auth/identity"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,7 +28,7 @@ func WithTLS(cfg *settingsv1.TLSConfig) Option {
 
 // NewServer creates a gRPC server, optionally with mTLS. The auth identity
 // server interceptor is always installed so downstream handlers see the
-// originating user via auth.FromContext.
+// originating user via identity.FromContext.
 func NewServer(opts ...Option) (*grpc.Server, error) {
 	o := &options{}
 	for _, opt := range opts {
@@ -36,7 +36,8 @@ func NewServer(opts ...Option) (*grpc.Server, error) {
 	}
 
 	serverOpts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(auth.UnaryServerInterceptor()),
+		grpc.ChainUnaryInterceptor(identity.UnaryServerInterceptor()),
+		grpc.ChainStreamInterceptor(identity.StreamServerInterceptor()),
 	}
 	if o.tls != nil {
 		creds, err := serverCredentials(o.tls)
@@ -58,7 +59,8 @@ func Dial(endpoint string, opts ...Option) (*grpc.ClientConn, error) {
 	}
 
 	dialOpts := []grpc.DialOption{
-		grpc.WithChainUnaryInterceptor(auth.UnaryClientInterceptor()),
+		grpc.WithChainUnaryInterceptor(identity.UnaryClientInterceptor()),
+		grpc.WithChainStreamInterceptor(identity.StreamClientInterceptor()),
 	}
 	if o.tls == nil {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))

@@ -1,0 +1,77 @@
+info:
+  description: This is the OpenAPI schema for Auth HTTP endpoints
+  title: Auth Service
+  version: v1
+openapi: 3.0.3
+paths:
+  /v1/auth/login:
+    get:
+      operationId: AuthService_Login
+      summary: Start browser OIDC login
+      description: Sets a signed OAuth state cookie and redirects the browser to the selected provider's authorization endpoint.
+      tags:
+        - AuthService
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          description: Name of the configured login provider
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the identity provider authorization URL
+        "400":
+          description: Unknown or missing login provider
+        "500":
+          description: Internal server error
+  /v1/auth/callback:
+    get:
+      operationId: AuthService_Callback
+      summary: Complete browser OIDC login
+      description: Verifies the OAuth state cookie, exchanges the authorization code for tokens, sets the session cookie, and redirects to /ui/.
+      tags:
+        - AuthService
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Authorization code returned by the identity provider
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          description: OAuth state value returned by the identity provider
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to /ui/
+        "400":
+          description: Missing parameters, state mismatch, or token exchange failure
+        "500":
+          description: Internal server error
+  /v1/auth/logout:
+    post:
+      operationId: AuthService_Logout
+      summary: Clear browser session
+      description: Clears the session cookie and returns the identity provider's RP-initiated logout URL if supported.
+      tags:
+        - AuthService
+      responses:
+        "200":
+          description: Session cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/services.auth.v1.LogoutResponse'
+components:
+  schemas:
+    services.auth.v1.LogoutResponse:
+      type: object
+      properties:
+        logoutUrl:
+          type: string
+          description: Optional RP-initiated logout URL at the identity provider
+

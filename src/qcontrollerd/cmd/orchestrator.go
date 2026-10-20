@@ -76,10 +76,8 @@ var orchestratorCmd = &cobra.Command{
 			go subscribeToNodeEvents(ctx, n, bc)
 		}
 
-		// gRPC-gateway: REST API (in-process, no network hop). The
-		// ForwardSetCookie option lets handlers (currently AuthService.Logout)
-		// set/clear browser cookies via grpc.SendHeader.
-		mux := runtime.NewServeMux(runtime.WithForwardResponseOption(auth.ForwardSetCookie))
+		// gRPC-gateway: REST API (in-process, no network hop).
+		mux := runtime.NewServeMux()
 		if err := orchestratorv1.RegisterOrchestratorServiceHandlerServer(ctx, mux, orchServer); err != nil {
 			return fmt.Errorf("failed to register orchestrator gateway: %w", err)
 		}
@@ -87,12 +85,12 @@ var orchestratorCmd = &cobra.Command{
 		if specsErr := mux.HandlePath("GET", "/openapi.yaml", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
 			openAPISpecs, openAPISpecsErr := qUtils.GenerateOpenAPISpecs()
 			if openAPISpecsErr != nil {
-				slog.Warn("Failed to generate OpenAPI specs", "error", openAPISpecsErr)
+				slog.WarnContext(r.Context(), "Failed to generate OpenAPI specs", "error", openAPISpecsErr)
 				http.Error(w, "Failed to generate OpenAPI specs", http.StatusInternalServerError)
 				return
 			}
 			if _, err := w.Write([]byte(openAPISpecs)); err != nil {
-				slog.Warn("Failed to write response", "error", err)
+				slog.WarnContext(r.Context(), "Failed to write response", "error", err)
 			}
 		}); specsErr != nil {
 			slog.Warn("Failed to register specs endpoint", "error", specsErr)
@@ -103,8 +101,7 @@ var orchestratorCmd = &cobra.Command{
 		httpMux.Handle("/", mux)
 		httpMux.HandleFunc("/ui/", frontend.Handler("/ui/"))
 
-		var verifiers []auth.Verifier
-		var oidcV *auth.OIDCVerifier
+		var authn *auth.Authenticator
 		allowedOrigin := ""
 		if config.Auth != nil && len(config.Auth.Issuers) > 0 {
 			secretPath := filepath.Join(filepath.Dir(configPath), "session.key")
@@ -112,25 +109,24 @@ var orchestratorCmd = &cobra.Command{
 			if secretErr != nil {
 				return fmt.Errorf("load session secret: %w", secretErr)
 			}
-			var oidcErr error
-			oidcV, oidcErr = auth.NewOIDCVerifier(ctx, config.Auth, secret)
-			if oidcErr != nil {
-				return fmt.Errorf("init oidc verifier: %w", oidcErr)
+			var authErr error
+			authn, authErr = auth.New(ctx, config.Auth, secret)
+			if authErr != nil {
+				return fmt.Errorf("init auth: %w", authErr)
 			}
-			oidcV.RegisterRoutes(httpMux)
-			verifiers = append(verifiers, oidcV)
-			// Origin is scheme+host only — strip any path/query from
+			auth.RegisterLoginFlow(httpMux, authn)
+			// AuthService (GetConfig/GetMe) goes via the gRPC-gateway, same as
+			// OrchestratorService. /v1/auth/login, /v1/auth/callback, and
+			// /v1/auth/logout are registered on httpMux above via OpenAPI stubs.
+			if err := authv1.RegisterAuthServiceHandlerServer(ctx, mux, auth.NewAuthServer(authn)); err != nil {
+				return fmt.Errorf("failed to register auth gateway: %w", err)
+			}
+			// Origin is scheme+host only: strip any path/query from
 			// external_url (e.g. behind a reverse proxy at /app) so the
 			// WebSocket origin check actually matches.
 			if u, err := url.Parse(config.Auth.ExternalUrl); err == nil && u.Scheme != "" && u.Host != "" {
 				allowedOrigin = u.Scheme + "://" + u.Host
 			}
-		}
-		// AuthService (GetConfig/GetMe/Logout) goes via the gRPC-gateway, same
-		// as OrchestratorService. /auth/login and /auth/callback stay on
-		// httpMux above because they're HTTP-redirect handlers, not JSON RPCs.
-		if err := authv1.RegisterAuthServiceHandlerServer(ctx, mux, auth.NewAuthServer(oidcV)); err != nil {
-			return fmt.Errorf("failed to register auth gateway: %w", err)
 		}
 		httpMux.HandleFunc("/ws", orchWsHandler(bc, allowedOrigin))
 		httpMux.HandleFunc("/ws/logs", orchLogsWsHandler(orchServer, allowedOrigin))
@@ -142,19 +138,15 @@ var orchestratorCmd = &cobra.Command{
 			http.Redirect(w, r, "/ui/", http.StatusMovedPermanently)
 		})
 
-		exempt := append(auth.PublicPaths(), "/ui/", "/ui", "/healthz")
 		var inner http.Handler = httpMux
-		if len(verifiers) > 0 {
-			inner = auth.RequireCSRFHeader(inner)
-		}
-		if oidcV != nil {
-			inner = oidcV.Renewal(inner)
+		if authn != nil {
+			inner = auth.NewGate(authn, "/ui/", "/ui", "/healthz").Protect(inner)
 		}
 		externalURL := ""
 		if config.Auth != nil {
 			externalURL = config.Auth.ExternalUrl
 		}
-		handler := auth.SecurityHeaders(externalURL)(auth.Middleware(verifiers, exempt...)(inner))
+		handler := auth.SecurityHeaders(externalURL)(inner)
 
 		httpServer := &http.Server{
 			Addr:              fmt.Sprintf(":%d", config.Port),

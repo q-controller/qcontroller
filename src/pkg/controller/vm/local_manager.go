@@ -169,12 +169,12 @@ func (n *localNodeManager) Remove(ctx context.Context, name string) error {
 	// Clean up instance directory on QEMU side
 	conn, dialErr := n.dial()
 	if dialErr != nil {
-		slog.Warn("Failed to connect to QEMU for cleanup", "id", name, "error", dialErr)
+		slog.WarnContext(ctx, "Failed to connect to QEMU for cleanup", "id", name, "error", dialErr)
 		return nil
 	}
 	defer func() { _ = conn.Close() }()
 	if _, removeErr := processv1.NewQemuServiceClient(conn).Remove(ctx, &processv1.RemoveRequest{Id: name}); removeErr != nil {
-		slog.Warn("Failed to remove instance from QEMU", "id", name, "error", removeErr)
+		slog.WarnContext(ctx, "Failed to remove instance from QEMU", "id", name, "error", removeErr)
 	}
 
 	return nil
@@ -263,7 +263,7 @@ func (n *localNodeManager) Logs(ctx context.Context, req *processv1.LogsRequest)
 			resp, recvErr := client.Recv()
 			if recvErr != nil {
 				if !errors.Is(recvErr, io.EOF) {
-					slog.Error("failed to receive logs from qemu", "instance", req.Id, "error", recvErr)
+					slog.ErrorContext(ctx, "failed to receive logs from qemu", "instance", req.Id, "error", recvErr)
 				}
 				return
 			}

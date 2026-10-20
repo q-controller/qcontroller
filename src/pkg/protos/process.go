@@ -150,16 +150,16 @@ func instanceLifecycleLoop(monitor *process.InstanceMonitor, forceStop <-chan st
 					defer cancel()
 					select {
 					case <-event.Instance.Done:
-						slog.Info("Instance stopped", "instance", event.ID)
+						slog.InfoContext(ctx, "Instance stopped", "instance", event.ID)
 						removeCh <- event.ID
 						return
 					case err := <-errorCh:
-						slog.Error("Failed to add instance to monitor", "instance", event.ID, "error", err)
+						slog.ErrorContext(ctx, "Failed to add instance to monitor", "instance", event.ID, "error", err)
 					case <-ctx.Done():
-						slog.Warn("Instance monitoring context deadline exceeded", "instance", event.ID)
+						slog.WarnContext(ctx, "Instance monitoring context deadline exceeded", "instance", event.ID)
 					}
 					<-event.Instance.Done
-					slog.Info("Instance stopped", "instance", event.ID)
+					slog.InfoContext(ctx, "Instance stopped", "instance", event.ID)
 					removeCh <- event.ID
 				}(event, ctx)
 			}

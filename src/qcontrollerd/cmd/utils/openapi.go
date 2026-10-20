@@ -23,6 +23,9 @@ var openAPISpecs string
 //go:embed docs/image-service-openapi.yml
 var imageServiceOpenAPISpecs string
 
+//go:embed docs/auth-service-openapi.yml
+var authServiceOpenAPISpecs string
+
 func mergeYAML(base, overlay map[string]any) map[string]any {
 	result := make(map[string]any)
 	// Copy base
@@ -48,16 +51,24 @@ func GenerateOpenAPISpecs() (string, error) {
 		return "", fmt.Errorf("failed to unmarshal base OpenAPI spec: %w", err)
 	}
 
-	var imagesSpec map[string]any
-	if unmarshalErr := yaml.Unmarshal([]byte(imageServiceOpenAPISpecs), &imagesSpec); unmarshalErr != nil {
-		return "", fmt.Errorf("failed to unmarshal images OpenAPI spec: %w", unmarshalErr)
+	for _, raw := range []string{imageServiceOpenAPISpecs, authServiceOpenAPISpecs} {
+		var overlay map[string]any
+		if err := yaml.Unmarshal([]byte(raw), &overlay); err != nil {
+			return "", fmt.Errorf("failed to unmarshal overlay OpenAPI spec: %w", err)
+		}
+		for _, key := range []string{"paths", "components"} {
+			overlaySection, ok := overlay[key].(map[string]any)
+			if !ok {
+				continue
+			}
+			baseSection, _ := spec[key].(map[string]any)
+			spec[key] = mergeYAML(baseSection, overlaySection)
+		}
 	}
 
-	mergedSpec := mergeYAML(spec, imagesSpec)
+	slog.Debug("Generated OpenAPI spec", "spec", spec)
 
-	slog.Debug("Generated OpenAPI spec", "spec", mergedSpec)
-
-	bytes, bytesErr := yaml.Marshal(mergedSpec)
+	bytes, bytesErr := yaml.Marshal(spec)
 	if bytesErr != nil {
 		return "", fmt.Errorf("failed to marshal OpenAPI spec: %w", bytesErr)
 	}

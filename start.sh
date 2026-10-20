@@ -52,7 +52,7 @@ Available options:
                    Optional: EXTERNAL_URL (default: http(s)://localhost:${ORCHESTRATOR_HTTP_PORT}).
                    Set EXTERNAL_URL to the public URL when running behind a
                    reverse proxy or on a non-localhost host. Register
-                   <EXTERNAL_URL>/auth/callback as a redirect URI at your IdP.
+                   <EXTERNAL_URL>/v1/auth/callback as a redirect URI at your IdP.
 EOF
     exit
 }

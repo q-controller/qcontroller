@@ -1,0 +1,8 @@
+package: v1
+generate:
+  std-http-server: true
+  models: true
+  client: false
+  embedded-spec: false
+output: src/generated/services/auth/v1/http.gen.go
+

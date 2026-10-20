@@ -98,7 +98,7 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	}
 
 	if eventErr := m.eventsPublisher.VMRemoved(id); eventErr != nil {
-		slog.Warn("Failed to publish VM removal event", "id", id, "error", eventErr)
+		slog.WarnContext(ctx, "Failed to publish VM removal event", "id", id, "error", eventErr)
 	}
 
 	return nil
