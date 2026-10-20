@@ -15,6 +15,7 @@ linters:
     - exhaustive       # switch on enum-like type missing a case
     - durationcheck    # multiplying durations by other durations
     - contextcheck     # context not propagated correctly through call chain
+    - sloglint         # slog.Info where slog.InfoContext should be, so identity reaches the log
 
     # Security
     - gosec            # hardcoded creds, weak crypto, InsecureSkipVerify, etc.
@@ -65,6 +66,11 @@ linters:
     exhaustive:
       default-signifies-exhaustive: true  # `default:` counts as covering all cases
 
+    sloglint:
+      # Flag slog.Info etc. only where a context.Context is in scope; startup
+      # code with no request context may keep using the plain forms.
+      context: scope
+
   exclusions:
     paths:
       # Generated code (protobuf, openapi, grpc-gateway). Don't lint what we
@@ -81,6 +87,12 @@ linters:
           - gosec
           - revive
           - prealloc
+      # The session cookie carries the IdP refresh token on purpose; it is
+      # HMAC-signed and HttpOnly. Encrypting it is an open auth hardening item.
+      - path: src/pkg/auth/
+        linters:
+          - gosec
+        text: G117
 
 formatters:
   enable:

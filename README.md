@@ -242,7 +242,7 @@ Example `auth` block with one issuer for browser login and one bearer-only issue
 An issuer with a `client_id` appears on the login page; one without is bearer-only. Every issuer needs an `audience` or a `client_id`. For all fields check [OIDCIssuer](/schema/protos/settings/v1/settings.proto).
 
 Register these URLs at the provider:
-- Redirect URI: `<external_url>/auth/callback`
+- Redirect URI: `<external_url>/v1/auth/callback`
 - Post-logout redirect URI: `<external_url>/ui/`
 
 The session secret used to sign cookies is generated on first start and stored next to the config file as `session.key`. The browser session lasts `session_ttl_seconds` (default 8 hours, renewed on every request) and a started login must complete within `login_ttl_seconds` (default 10 minutes).

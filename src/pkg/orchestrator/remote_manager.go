@@ -120,7 +120,7 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageID string) err
 		}
 	}
 
-	slog.Info("Pushing image to remote node", "image", imageID, "node", n.name)
+	slog.InfoContext(ctx, "Pushing image to remote node", "image", imageID, "node", n.name)
 	n.publishProgress(imageID, 0)
 
 	tmpFile, tmpFileErr := os.CreateTemp("", "image-push-*")
@@ -157,7 +157,7 @@ func (n *remoteNodeManager) ensureImage(ctx context.Context, imageID string) err
 		return fmt.Errorf("upload image to %s: %w", n.name, err)
 	}
 
-	slog.Info("Image pushed to remote node", "image", imageID, "node", n.name)
+	slog.InfoContext(ctx, "Image pushed to remote node", "image", imageID, "node", n.name)
 	n.publishProgress(imageID, 100)
 	return nil
 }

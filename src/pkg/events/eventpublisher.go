@@ -175,7 +175,7 @@ func NewEventPublisher(ctx context.Context, endpoint string, tlsCfg *settingsv1.
 				if streamErr == nil {
 					break
 				}
-				slog.Debug("Event service not ready, retrying", "error", streamErr)
+				slog.DebugContext(ctx, "Event service not ready, retrying", "error", streamErr)
 				select {
 				case <-ctx.Done():
 					return
@@ -196,7 +196,7 @@ func NewEventPublisher(ctx context.Context, endpoint string, tlsCfg *settingsv1.
 						return
 					}
 					if sendErr := stream.Send(event); sendErr != nil {
-						slog.Warn("Event stream broken, reconnecting", "error", sendErr)
+						slog.WarnContext(ctx, "Event stream broken, reconnecting", "error", sendErr)
 						streamBroken = true
 					}
 				}

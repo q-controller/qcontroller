@@ -42,7 +42,7 @@ func WaitForFileCreation(ctx context.Context, filename string) error {
 	}
 	defer func() {
 		if err := watcher.Close(); err != nil {
-			slog.Error("WaitForFileCreation: failed to close watcher", "error", err)
+			slog.ErrorContext(ctx, "WaitForFileCreation: failed to close watcher", "error", err)
 		}
 	}()
 
@@ -55,20 +55,20 @@ func WaitForFileCreation(ctx context.Context, filename string) error {
 		return nil
 	}
 
-	slog.Debug("WaitForFileCreation: starting to watch directory", "directory", dir, "filename", base)
+	slog.DebugContext(ctx, "WaitForFileCreation: starting to watch directory", "directory", dir, "filename", base)
 	for {
 		select {
 		case event, ok := <-watcher.Events:
 			if !ok {
 				return errors.New("watcher closed")
 			}
-			slog.Debug("WaitForFileCreation: received event", "event", event.Op, "name", event.Name)
+			slog.DebugContext(ctx, "WaitForFileCreation: received event", "event", event.Op, "name", event.Name)
 			if event.Op&fsnotify.Create == fsnotify.Create {
 				if filepath.Base(event.Name) == base {
-					slog.Debug("WaitForFileCreation: target file created", "name", event.Name)
+					slog.DebugContext(ctx, "WaitForFileCreation: target file created", "name", event.Name)
 					return nil
 				} else {
-					slog.Debug("WaitForFileCreation: different file created", "created", filepath.Base(event.Name), "looking_for", base)
+					slog.DebugContext(ctx, "WaitForFileCreation: different file created", "created", filepath.Base(event.Name), "looking_for", base)
 				}
 			}
 		case _, ok := <-watcher.Errors:

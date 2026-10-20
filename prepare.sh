@@ -35,7 +35,7 @@ cleanup() {
 "${script_dir}/schema/prepare.sh"
 
 # qcontroller-specific tools (lint, vuln scan).
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
 

@@ -1,51 +1,117 @@
 package auth
 
 import (
-	"errors"
+	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
+
+	"github.com/q-controller/qcontroller/src/pkg/auth/identity"
 )
 
-// Middleware tries each verifier in order and attaches the first identity
-// that matches to the request context. If no verifier has an opinion and
-// auth is disabled (no verifiers configured), requests pass as anonymous.
-// Otherwise unauthenticated requests get 401.
-//
-// Paths in exemptPrefixes skip verification entirely — used for /auth/*
-// (login flow can't require auth) and /ui/* (static assets, the SPA itself
-// gates access via /auth/me).
-func Middleware(verifiers []Verifier, exemptPrefixes ...string) func(http.Handler) http.Handler {
+// Requests that reach it without an identity in the context get 401,
+// unless the path is exempt.
+func requireIdentity(exemptPrefixes ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if len(verifiers) == 0 {
-				next.ServeHTTP(w, r.WithContext(WithIdentity(r.Context(), Anonymous())))
+			if identity.FromContext(r.Context()) != nil {
+				next.ServeHTTP(w, r)
 				return
 			}
-
 			for _, p := range exemptPrefixes {
 				if strings.HasPrefix(r.URL.Path, p) {
 					next.ServeHTTP(w, r)
 					return
 				}
 			}
-
-			for _, v := range verifiers {
-				id, err := v.Verify(r)
-				if err == nil {
-					next.ServeHTTP(w, r.WithContext(WithIdentity(r.Context(), id)))
-					return
-				}
-				if !errors.Is(err, ErrUnauthenticated) {
-					slog.WarnContext(r.Context(), "auth verifier error", "error", err)
-					http.Error(w, "unauthenticated", http.StatusUnauthorized)
-					return
-				}
-			}
-
 			http.Error(w, "unauthenticated", http.StatusUnauthorized)
 		})
 	}
+}
+
+type Gate struct {
+	auth   *Authenticator
+	exempt []string
+}
+
+func NewGate(a *Authenticator, exemptPrefixes ...string) *Gate {
+	return &Gate{
+		auth:   a,
+		exempt: append(publicPaths(), exemptPrefixes...),
+	}
+}
+
+func (g *Gate) Protect(next http.Handler) http.Handler {
+	h := requireCSRFHeader(next)
+	h = requireIdentity(g.exempt...)(h)
+	h = g.browser(h)
+	return g.bearer(h)
+}
+
+// Bearer turns an Authorization: Bearer JWT into an identity in the request
+// context. Requests without the header pass through untouched. A header that
+// fails verification against every issuer is a hard 401.
+func (g *Gate) bearer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := r.Header.Get("Authorization")
+		if !strings.HasPrefix(h, "Bearer ") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		token := strings.TrimPrefix(h, "Bearer ")
+		var lastErr error
+		for _, v := range g.auth.verifiers {
+			id, _, err := v.identify(r.Context(), token)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			next.ServeHTTP(w, r.WithContext(identity.WithContext(r.Context(), id)))
+			return
+		}
+		slog.WarnContext(r.Context(), "invalid bearer token", "error", lastErr)
+		http.Error(w, "unauthenticated", http.StatusUnauthorized)
+	})
+}
+
+// browser turns a valid session cookie into an identity in the request
+// context and re-issues the cookie with a fresh TTL (sliding session). If the
+// ID token inside has expired and a refresh token is available it is refreshed
+// against the IdP first; when that fails the cookie is cleared and the request
+// continues without an identity, so requireIdentity rejects it. Requests
+// without a cookie, or with one that doesn't verify, pass through untouched.
+func (g *Gate) browser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Already authenticated
+		if identity.FromContext(r.Context()) != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		var s session
+		if rd, err := g.auth.session.Reader(r); err != nil || json.NewDecoder(rd).Decode(&s) != nil || s.Identity == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		p, ok := g.auth.providers[s.Provider]
+		if ok && s.RefreshToken != "" && !s.TokenExpiry.IsZero() && time.Now().After(s.TokenExpiry) {
+			refreshed, rerr := p.renew(r.Context(), s.RefreshToken)
+			if rerr != nil {
+				slog.WarnContext(r.Context(), "session refresh failed", "provider", s.Provider, "error", rerr)
+				http.SetCookie(w, g.auth.session.Clear())
+				next.ServeHTTP(w, r)
+				return
+			}
+			s = refreshed
+		}
+
+		_ = writeJSONCookie(g.auth.session.Writer(w), s)
+		next.ServeHTTP(w, r.WithContext(identity.WithContext(r.Context(), s.Identity)))
+	})
 }
 
 // strictCSP is applied to every response. 'unsafe-inline'
@@ -66,7 +132,8 @@ const strictCSP = "default-src 'self'; " +
 // response headers on every request. HSTS is only sent when externalURL is
 // HTTPS so HTTP dev setups don't get locked into HTTPS by their own browser.
 func SecurityHeaders(externalURL string) func(http.Handler) http.Handler {
-	hsts := strings.HasPrefix(externalURL, "https://")
+	u, err := url.Parse(externalURL)
+	hsts := err == nil && u.Scheme == "https"
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
@@ -88,7 +155,7 @@ func SecurityHeaders(externalURL string) func(http.Handler) http.Handler {
 // cross-origin contexts: HTML forms can't set custom headers, and cross-origin
 // fetch() with custom headers triggers a CORS preflight that the orchestrator
 // doesn't grant. Layered defense on top of SameSite=Lax cookies.
-func RequireCSRFHeader(next http.Handler) http.Handler {
+func requireCSRFHeader(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:

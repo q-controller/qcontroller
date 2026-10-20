@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/q-controller/qcontroller/src/pkg/auth"
+	"github.com/q-controller/qcontroller/src/pkg/auth/identity"
 )
 
 func LevelFromEnv() slog.Level {
@@ -22,7 +22,7 @@ func LevelFromEnv() slog.Level {
 }
 
 // CreateLogger returns a slog.Logger whose handler is wrapped with
-// auth.LogHandler, so any record whose context carries an Identity (set by
+// identity.LogHandler, so any record whose context carries an Identity (set by
 // HTTP auth middleware or gRPC server interceptor) gets `user`/`issuedBy`
 // attributes for free. Applies to every binary subcommand.
 func CreateLogger() *slog.Logger {
@@ -35,5 +35,5 @@ func CreateLogger() *slog.Logger {
 			return a
 		},
 	})
-	return slog.New(auth.LogHandler(base))
+	return slog.New(identity.LogHandler(base))
 }

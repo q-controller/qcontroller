@@ -23,7 +23,7 @@ func TestLoadOrCreateSecret_GeneratesWhenMissing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, secret, written)
 
-	// Mode 0600 (Unix only — on Windows the bits aren't meaningful).
+	// Mode 0600 (Unix only; on Windows the bits aren't meaningful).
 	if runtime.GOOS != "windows" {
 		fi, err := os.Stat(path)
 		require.NoError(t, err)

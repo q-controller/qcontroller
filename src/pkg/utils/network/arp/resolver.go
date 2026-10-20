@@ -56,7 +56,7 @@ func (r *Resolver) start(ctx context.Context) {
 		// Initial scan (async)
 		scanRes, scanErr := r.cfg.Scanner.Scan(r.cfg.Timeout)
 		if scanErr != nil {
-			slog.Debug("Initial ARP scan failed", "error", scanErr)
+			slog.DebugContext(ctx, "Initial ARP scan failed", "error", scanErr)
 		} else {
 			r.mu.Lock()
 			r.knownHosts = scanRes
@@ -68,15 +68,15 @@ func (r *Resolver) start(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				slog.Info("Stopping ARP resolver")
+				slog.InfoContext(ctx, "Stopping ARP resolver")
 				return
 			case <-ticker.C:
 				scanRes, scanErr := r.cfg.Scanner.Scan(r.cfg.Timeout)
 				if scanErr != nil {
-					slog.Debug("ARP scan failed", "error", scanErr)
+					slog.DebugContext(ctx, "ARP scan failed", "error", scanErr)
 					continue
 				}
-				slog.Debug("ARP scan completed", "hosts_found", scanRes)
+				slog.DebugContext(ctx, "ARP scan completed", "hosts_found", scanRes)
 				r.mu.Lock()
 				r.knownHosts = scanRes
 				r.mu.Unlock()
