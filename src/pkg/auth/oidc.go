@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	authv1 "github.com/q-controller/qcontroller/src/generated/services/auth/v1"
 	settingsv1 "github.com/q-controller/qcontroller/src/generated/settings/v1"
 	"golang.org/x/oauth2"
 )
@@ -41,10 +42,10 @@ type configuredIssuer struct {
 // federated logout (passing id_token_hint to the IdP); RefreshToken is used
 // by the Renewal middleware to refresh the ID token when it expires.
 type sessionPayload struct {
-	Identity     *Identity `json:"id"`
-	IDToken      string    `json:"idt,omitempty"`
-	RefreshToken string    `json:"rt,omitempty"`
-	Provider     string    `json:"p,omitempty"`
+	Identity     *authv1.Identity `json:"id"`
+	IDToken      string           `json:"idt,omitempty"`
+	RefreshToken string           `json:"rt,omitempty"`
+	Provider     string           `json:"p,omitempty"`
 }
 
 // OIDCVerifier validates incoming requests via either a session cookie set
@@ -186,7 +187,7 @@ func (v *OIDCVerifier) LoginProviders() []string {
 	return out
 }
 
-func (v *OIDCVerifier) Verify(r *http.Request) (*Identity, error) {
+func (v *OIDCVerifier) Verify(r *http.Request) (*authv1.Identity, error) {
 	// Bearer token wins over cookie if both present (CI clients).
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		token := strings.TrimPrefix(h, "Bearer ")
@@ -211,7 +212,7 @@ func (v *OIDCVerifier) Verify(r *http.Request) (*Identity, error) {
 	return nil, ErrUnauthenticated
 }
 
-func (v *OIDCVerifier) verifyJWT(ctx context.Context, iss *configuredIssuer, raw string) (*Identity, error) {
+func (v *OIDCVerifier) verifyJWT(ctx context.Context, iss *configuredIssuer, raw string) (*authv1.Identity, error) {
 	tok, err := iss.verifier.Verify(ctx, raw)
 	if err != nil {
 		return nil, err
@@ -222,7 +223,7 @@ func (v *OIDCVerifier) verifyJWT(ctx context.Context, iss *configuredIssuer, raw
 		Groups []string `json:"groups"`
 	}
 	_ = tok.Claims(&claims)
-	return &Identity{
+	return &authv1.Identity{
 		Subject:  tok.Subject,
 		Email:    claims.Email,
 		Name:     claims.Name,

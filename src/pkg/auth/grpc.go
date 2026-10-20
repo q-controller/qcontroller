@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 
+	v1 "github.com/q-controller/qcontroller/src/generated/services/auth/v1"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -45,7 +47,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
 			if sub := mdFirst(md, mdSubject); sub != "" {
-				ctx = WithIdentity(ctx, &Identity{
+				ctx = WithIdentity(ctx, &v1.Identity{
 					Subject:  sub,
 					Email:    mdFirst(md, mdEmail),
 					Name:     mdFirst(md, mdName),

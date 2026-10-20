@@ -7,21 +7,22 @@ import (
 	"strings"
 	"testing"
 
+	v1 "github.com/q-controller/qcontroller/src/generated/services/auth/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // stubVerifier is a minimal Verifier for testing the chain.
 type stubVerifier struct {
-	id  *Identity
+	id  *v1.Identity
 	err error
 }
 
-func (s stubVerifier) Verify(_ *http.Request) (*Identity, error) {
+func (s stubVerifier) Verify(_ *http.Request) (*v1.Identity, error) {
 	return s.id, s.err
 }
 
-func capture(captured **Identity) http.Handler {
+func capture(captured **v1.Identity) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*captured = FromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
@@ -31,7 +32,7 @@ func capture(captured **Identity) http.Handler {
 // ---- Middleware (auth chain) ----
 
 func TestMiddleware_NoVerifiers_StampsAnonymous(t *testing.T) {
-	var got *Identity
+	var got *v1.Identity
 	handler := Middleware(nil)(capture(&got))
 
 	rec := httptest.NewRecorder()
@@ -45,10 +46,10 @@ func TestMiddleware_NoVerifiers_StampsAnonymous(t *testing.T) {
 
 func TestMiddleware_FirstSuccessfulVerifierWins(t *testing.T) {
 	first := stubVerifier{err: ErrUnauthenticated}
-	second := stubVerifier{id: &Identity{Subject: "bob", IssuedBy: "oidc:test"}}
-	third := stubVerifier{id: &Identity{Subject: "should-not-be-used"}}
+	second := stubVerifier{id: &v1.Identity{Subject: "bob", IssuedBy: "oidc:test"}}
+	third := stubVerifier{id: &v1.Identity{Subject: "should-not-be-used"}}
 
-	var got *Identity
+	var got *v1.Identity
 	handler := Middleware([]Verifier{first, second, third})(capture(&got))
 
 	rec := httptest.NewRecorder()
@@ -61,7 +62,7 @@ func TestMiddleware_FirstSuccessfulVerifierWins(t *testing.T) {
 
 func TestMiddleware_AllUnauthenticated_Returns401(t *testing.T) {
 	v := stubVerifier{err: ErrUnauthenticated}
-	handler := Middleware([]Verifier{v, v})(capture(new(*Identity)))
+	handler := Middleware([]Verifier{v, v})(capture(new(*v1.Identity)))
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/x", nil))
@@ -72,9 +73,9 @@ func TestMiddleware_AllUnauthenticated_Returns401(t *testing.T) {
 func TestMiddleware_HardErrorReturns401AndStopsChain(t *testing.T) {
 	hardErr := errors.New("token tampered")
 	first := stubVerifier{err: hardErr}
-	second := stubVerifier{id: &Identity{Subject: "shouldnt-run"}}
+	second := stubVerifier{id: &v1.Identity{Subject: "shouldnt-run"}}
 
-	var got *Identity
+	var got *v1.Identity
 	handler := Middleware([]Verifier{first, second})(capture(&got))
 
 	rec := httptest.NewRecorder()
@@ -89,7 +90,7 @@ func TestMiddleware_HardErrorReturns401AndStopsChain(t *testing.T) {
 func TestMiddleware_ExemptPathPassesThroughWithoutIdentity(t *testing.T) {
 	v := stubVerifier{err: ErrUnauthenticated}
 
-	var got *Identity
+	var got *v1.Identity
 	handler := Middleware([]Verifier{v}, "/auth/login", "/ui/")(capture(&got))
 
 	for _, path := range []string{"/auth/login", "/auth/login?provider=x", "/ui/index.html"} {
@@ -201,9 +202,9 @@ func TestSecurityHeaders_HSTSOnlyForHTTPS(t *testing.T) {
 // ---- Composed pipeline (smoke: SecurityHeaders → Middleware → CSRF → handler) ----
 
 func TestComposedPipeline_GETPasses(t *testing.T) {
-	v := stubVerifier{id: &Identity{Subject: "alice", IssuedBy: "oidc:test"}}
+	v := stubVerifier{id: &v1.Identity{Subject: "alice", IssuedBy: "oidc:test"}}
 
-	var got *Identity
+	var got *v1.Identity
 	final := capture(&got)
 	chain := SecurityHeaders("")(Middleware([]Verifier{v})(RequireCSRFHeader(final)))
 
@@ -218,7 +219,7 @@ func TestComposedPipeline_GETPasses(t *testing.T) {
 }
 
 func TestComposedPipeline_POSTWithoutCSRFHeaderRejected(t *testing.T) {
-	v := stubVerifier{id: &Identity{Subject: "alice"}}
+	v := stubVerifier{id: &v1.Identity{Subject: "alice"}}
 	chain := SecurityHeaders("")(Middleware([]Verifier{v})(RequireCSRFHeader(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("inner handler must not run")
 		w.WriteHeader(http.StatusOK)
