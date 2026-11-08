@@ -2,66 +2,42 @@
 
 # QEMU VM Controller
 
-**QEMU VM Controller** (or `qcontroller`) is a flexible, API-driven tool for managing QEMU-based virtual machine instances on Linux and macOS. It is designed for users who need precise control over VM networking, image management, and orchestration—whether for local development, testing, or reproducible infrastructure setups.
+`qcontroller` manages QEMU virtual machines across one or more Linux and macOS hosts from a single binary (`qcontrollerd`). It exposes a gRPC and REST API, WebSocket streams for state changes and guest console logs, and an embedded React web UI.
 
-`qcontroller` provides a unified interface for VM operations:
-
-1. **Create** – Create and optionally start a new VM from a known image, on any node.
-2. **Start** – Resume a stopped VM (async — returns immediately, transitions via events).
-3. **Stop** – Gracefully or forcefully stop a running VM.
-4. **Remove** – Delete a VM and clean up its resources.
-5. **Info** – Query the status, configuration, and runtime info of VMs.
-6. **ListNodes** – List all configured nodes in the cluster.
-
-Operations are defined using [Protocol Buffers](/src/protos/) and exposed via both **gRPC** and a **RESTful HTTP gateway**, making integration with scripts, dashboards, or automation frameworks straightforward.
-
-The architecture separates node-level services from multi-node coordination. Each node runs `qemu`, `fileregistry`, `eventservice`, and `controller` — all communicating via gRPC on localhost. The `orchestrator` sits on top, providing a unified REST API, WebSocket event streaming, image distribution, and the web UI. This is the same architecture regardless of the number of nodes — even a single-node setup runs through the orchestrator.
-
----
+Supported operations:
+- **Instance lifecycle**: create, start, stop, remove, and inspect VMs across nodes
+- **Snapshots**: save, list, restore, and delete VM snapshots
+- **Images**: upload, list, and delete base images; the orchestrator pushes images to target nodes automatically before creating a VM
+- **Live streams**: real-time VM state updates (`/ws`) and per-instance console logs (`/ws/logs`)
 
 ![Dashboard Screenshot](/dashboard.png)
 
----
+## Architecture
 
 ![Architecture Diagram](/architecture.svg)
 
----
+`qcontrollerd` ships as one binary with five subcommands:
 
-## ✨ Highlights
+- `qemu` (gRPC): launches and monitors QEMU processes. Runs as root because it creates network interfaces (TAP on Linux, vmnet on macOS).
+- `controller` (gRPC): manages VM state on a node, talks to `qemu`, and publishes state transitions to `eventservice`.
+- `fileregistry` (gRPC): stores VM base images and serves chunked uploads/downloads. Runs on each node and on the orchestrator.
+- `eventservice` (gRPC): pub/sub hub for VM and image events on a node.
+- `orchestrator` (HTTP): control plane that connects to one or more nodes over gRPC, distributes images, aggregates events, and serves the REST API, WebSocket streams, OpenAPI spec, and web UI.
 
-- 🛠 **Single static binary**: All logic is bundled into one Go binary with multiple subcommands.
-- 🖥 **Cross-platform support**: Works on Linux and macOS (Intel tested; Apple Silicon supported via QEMU).
-- 🌐 **Multi-node support**: Manage VMs across multiple physical nodes from a single control plane.
-- 🎯 **Modern web UI**: Full-featured React-based interface available at [qcontroller-ui](https://github.com/q-controller/qcontroller-ui).
-- 🧠 **Declarative VM descriptions**: Define VM specs via JSON configs matching Protobuf definitions.
-- 📡 **gRPC + REST API**: Communicate via a structured protocol or plain HTTP—your choice.
-- **Real-time event streaming**: Live VM state changes via WebSocket at `/ws`, aggregated from all nodes by the orchestrator.
-- **Automatic image distribution**: Orchestrator pushes images to remote nodes before VM creation.
-- 📜 **Auto-generated OpenAPI schema**: Serves OpenAPI specs.
-- 🔒 **Optional mTLS and HTTPS**: gRPC services can run with mutual TLS, and the orchestrator can serve HTTPS — all opt-in via config.
-- 🧩 **Easily extendable**: Add support for snapshots, cloning, or additional QEMU flags with minimal effort.
+Only `qemu` requires root; the other four services run as unprivileged users. Even a single-host setup runs through the orchestrator.
 
----
-
-## 🚀 Getting Started
+## Getting Started
 
 ### macOS Package Installation
 
-For macOS users, we provide a convenient installer package that handles service setup automatically:
+Build and install the macOS `.pkg` installer, which sets up `launchd` services automatically:
 
 ```bash
-# Build the macOS package
 ./build-macos-pkg.sh
-
-# Install the package (creates system services)
 sudo installer -pkg build/qcontrollerd.pkg -target /
 ```
 
-This will:
-- Install `qcontrollerd` to `/usr/local/bin/`
-- Create LaunchDaemon (system service) for QEMU
-- Create LaunchAgent (user services) for controller and orchestrator
-- Auto-start all services after installation
+This installs `/usr/local/bin/qcontrollerd`, registers a LaunchDaemon for `qemu` and LaunchAgents for the unprivileged services, and starts them.
 
 To uninstall:
 ```bash
@@ -70,7 +46,7 @@ sudo /usr/local/share/com.github.qcontroller.qcontrollerd/uninstall.sh
 
 ### Debian/Ubuntu Package Installation
 
-For Debian/Ubuntu users, a `.deb` package can be built and installed:
+Build and install the `.deb` package:
 
 ```bash
 # Build the binary and package it. Set GOARCH for cross-arch.
@@ -94,7 +70,7 @@ The package installs:
 - Per-service data under `/var/lib/qcontrollerd/<service>/`
 - Logs via journald (`journalctl -u qcontrollerd-<service>`)
 
-A single dedicated `qcontroller` system user is created and used for the controller, fileregistry, eventservice and orchestrator services. The qemu service runs as root because it creates network namespaces and bridges.
+A dedicated `qcontroller` system user runs `controller`, `fileregistry`, `eventservice`, and `orchestrator`. The `qemu` service runs as root to manage network namespaces and bridges.
 
 To remove (keeps configs):
 ```bash
@@ -106,69 +82,41 @@ To purge (removes configs, data, users):
 sudo apt purge qcontrollerd
 ```
 
-### Manual Build Instructions
+### Building and Running Manually
 
-To build the binary manually, run:
+Use `./exec.sh` to build, test, and lint inside the [Dockerfile](/Dockerfile) `pre-build` container without installing Go, Node.js, Java, or codegen tools on the host (`exec.sh` detects your host OS and cross-compiles `build/qcontrollerd` for it):
 
 ```bash
-make install-tools
-make
+./exec.sh make
+./exec.sh make lint
+./exec.sh make test
 ```
 
-## Subcommands
+If you prefer building directly on the host instead of via `./exec.sh`, run `make install-tools && make`. The host needs Go, Java 17 (for the OpenAPI client generator) and Python 3 (for the QAPI generator); the [Dockerfile](/Dockerfile) is the reference list.
 
-The compiled binary provides the following subcommands:
-
-* `qemu` – Manages VM process execution. Requires root for networking (TAP on Linux, vmnet on macOS).
-* `controller` – Manages VM lifecycle on the local node. Polls QemuService for state changes and publishes them to the event service via gRPC.
-* `eventservice` – Standalone pub/sub hub for VM and image events. Controllers and file registries publish events to it; the orchestrator subscribes.
-* `orchestrator` – Coordinates multiple nodes. Subscribes to each node's event service, aggregates state, distributes images, and serves the REST API, WebSocket event stream, and web frontend via gRPC-gateway.
-* `fileregistry` – Manages VM image storage. Provides chunked upload/download via gRPC. Runs on each node and on the orchestrator.
-
-> **Separation of Controller and QEMU**:
-> The qemu service requires elevated privileges for networking (TAP/vmnet). To avoid granting root to the entire application, it runs as a separate process. The controller and other services run as non-root users.
-
-> **Architecture**:
-> Each node runs `qemu`, `fileregistry`, `eventservice`, and `controller` — all communicating via gRPC on localhost. The orchestrator connects to each node's controller, file registry, and event service via gRPC. Images are uploaded to the orchestrator and automatically pushed to nodes on demand. The same setup works for one node or many.
-
-### Running the App
-
-#### Packaged Installation (macOS)
-If you installed via the macOS package, services are automatically started and managed by launchd. Access the API at:
-- Web UI: `http://localhost:8080/ui/`
-- OpenAPI specs: `http://localhost:8080/openapi.yaml`
-
-#### Manual Execution
-Each subcommand expects a JSON configuration file matching its Protobuf [definitions](/src/protos/settings/v1/settings.proto).
-
-A startup script is provided for running all services together during development:
+Running VMs requires `qemu-system-x86_64` or `qemu-system-aarch64` on the host. Each subcommand takes a JSON config file matching its Protobuf schema in [settings.proto](/schema/protos/settings/v1/settings.proto). For local runs, `start.sh` generates configs and starts all five processes, with the orchestrator on `8080` and the gRPC services on `8008` (qemu), `8009` (controller), `8010` (fileregistry) and `8011` (eventservice); the `.deb` package uses `9001` to `9004` for the gRPC services instead:
 
 ```shell
 ./start.sh --rundir /tmp/qcontroller --bin ./build/qcontrollerd
 ```
 
-Run `./start.sh --help` for full usage details (interface, CIDR, DHCP range, macOS mode, certs).
+Run `./start.sh --help` for network and certificate flags (interface, CIDR, DHCP range, macOS network mode, `--certs`, `--auth`).
 
-To add remote nodes, edit the `nodes` array in the orchestrator config. Each node entry needs a `name`, `endpoint` (the node's controller gRPC address), `fileRegistryEndpoint`, and `eventsEndpoint` (the node's event service gRPC address).
-
-For multi-node setups with overlay networking, see the helper scripts:
-- [`setup-nebula.sh`](/setup-nebula.sh) — generates Nebula CA, certificates, and configs for two nodes
-- [`setup-overlay.sh`](/setup-overlay.sh) — adds/removes nft forwarding rules between the QEMU bridge and the overlay interface
-
-Default service ports:
-- orchestrator: `http://localhost:8080` (HTTP)
-- eventservice: `localhost:8011` (gRPC)
-- controller: `localhost:8009` (gRPC)
-- qemu: `localhost:8008` (gRPC)
-- fileregistry: `localhost:8010` (gRPC)
-
-Then access the interfaces:
+Once running, the orchestrator serves:
 - Web UI: `http://localhost:8080/ui/`
-- OpenAPI Specs: `http://localhost:8080/openapi.yaml`
+- OpenAPI spec: `http://localhost:8080/openapi.yaml`
+- Event stream (Protobuf over WebSocket): `ws://localhost:8080/ws`
+- Instance logs (Protobuf over WebSocket): `ws://localhost:8080/ws/logs?node=<node>&name=<vm>`
 
-## 🔒 TLS
+To add remote nodes, add entries to the `nodes` array in the orchestrator config with `name`, `endpoint` (controller gRPC address), `fileRegistryEndpoint`, and `eventsEndpoint`.
 
-Every gRPC service and the orchestrator's HTTP server accept an optional `tls` block pointing at a CA certificate, server certificate, and private key. When present, gRPC servers enforce **mTLS** (TLS 1.3, client cert verified against the CA) and the orchestrator serves **HTTPS**. When absent, services run plaintext — useful for inside a trusted cluster where a service mesh or ingress already handles encryption.
+For multi-node setups with overlay networking, see:
+- [`setup-nebula.sh`](/setup-nebula.sh): generates a Nebula CA, host certificates, and configs for two nodes
+- [`setup-overlay.sh`](/setup-overlay.sh): adds or removes nftables forwarding rules between the QEMU bridge and the overlay interface
+
+## TLS
+
+Every gRPC service and the orchestrator's HTTP server accept an optional `tls` block pointing at a CA certificate, server certificate, and private key. When present, gRPC servers enforce **mTLS** (TLS 1.3, client cert verified against the CA) and the orchestrator serves **HTTPS**. When absent, services run plaintext, which is useful inside a trusted network where an ingress or mesh handles encryption.
 
 Example `tls` block:
 
@@ -267,65 +215,3 @@ OIDC_CLIENT_SECRET=anything \
 OIDC_PROVIDER_NAME=fake \
 ./start.sh --auth --rundir ./build/run --bin ./build/qcontrollerd
 ```
-
-## Example Base Image
-
-This repo includes tooling to build a base Ubuntu Cloud image with the QEMU Guest Agent (QGA), compatible with qcontroller's QAPI integration.
-Use [Packer](https://www.packer.io/) to build it:
-
-```shell
-packer init .
-packer build .
-```
-
-Default values are configured for Linux on x86_64. If you're using a different platform, you'll need to adjust these settings. For example, on macOS with Apple Silicon, build the image using:
-
-```shell
-packer build -var arch=arm64 -var machine=virt -var accelerator=hvf .
-```
-
-See [qga](/qga/README.md) for details on building QGA.
-
-## 📎 API Access
-
-The gRPC gateway automatically generates an OpenAPI schema that is served at:
-
-```shell
-http://localhost:8080/openapi.yaml
-```
-
-For real-time VM state updates, connect to the WebSocket endpoint:
-
-```shell
-ws://localhost:8080/ws
-```
-
-When the orchestrator is configured with TLS, use `https://` and `wss://` instead.
-
-All REST endpoints follow the schema defined in [/src/protos/](/src/protos/). WebSocket messages use Protocol Buffers for efficient binary communication.
-
-## 🧪 Development Setup
-
-Use the provided [Dockerfile](/Dockerfile) to ensure a consistent dev environment.
-
-To run commands inside the container:
-```shell
-./exec.sh make lint
-```
-
-This wraps the environment with all Go tools and build dependencies preinstalled.
-
-## Build Dependencies
-
-- `make` `git` `go` `protoc`
-- Go plugins:
-    - `protoc-gen-go` `protoc-gen-go-grpc`
-    - [`buf`](https://github.com/bufbuild/buf)
-    - [`protoc-gen-grpc-gateway`](https://github.com/grpc-ecosystem/grpc-gateway)
-    - [`protoc-gen-openapi`](https://github.com/google/gnostic)
-    - [`golangci-lint`](https://github.com/golangci/golangci-lint)
-
-## Runtime Dependencies
-
-- `qemu-system-x86_64` (x86_64 VMs are supported and tested)
-- `qemu-system-aarch64` (ARM64 VMs are supported and tested)
