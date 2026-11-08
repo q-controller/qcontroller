@@ -21,6 +21,11 @@ cleanup() {
     exit "$exit_code"
 }
 
+GCFLAGS=()
+if [[ "${DEBUG:-}" == "1" ]]; then
+    GCFLAGS=(-gcflags 'all=-N -l')
+fi
+
 function build_binaries() {
     BIN_DIR="$1"
     mkdir -p "${BIN_DIR}"
@@ -29,20 +34,26 @@ function build_binaries() {
     if [[ "$UNAME_S" == "Linux" ]]; then
         target_goos="${GOOS:-linux}"
         if [[ "$target_goos" == "linux" ]]; then
-            CGO_ENABLED=1 go build -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
+            CGO_ENABLED=1 go build "${GCFLAGS[@]}" -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
         else
-            CGO_ENABLED=0 go build -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
+            CGO_ENABLED=0 go build "${GCFLAGS[@]}" -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
         fi
     elif [[ "$UNAME_S" == "Darwin" ]]; then
-        # On macOS, build universal binary for amd64 and arm64
-        ARCHS="amd64 arm64"
-        BINS=""
-        for ARCH in $ARCHS; do
-            echo "Building for Darwin/$ARCH..."
-            GOARCH=$ARCH go build -o "${TEMP_DIR}/qcontrollerd-$ARCH" src/qcontrollerd/main.go
-            BINS="${BINS} ${TEMP_DIR}/qcontrollerd-$ARCH"
-        done
-        lipo -create -output "${BIN_DIR}/qcontrollerd" ${BINS}
+        # Delve cannot exec a universal binary, so build only the host arch when debugging.
+        if [[ "${DEBUG:-}" == "1" ]]; then
+            echo "Building debug binary for Darwin/$(go env GOARCH)..."
+            go build "${GCFLAGS[@]}" -o "${BIN_DIR}/qcontrollerd" src/qcontrollerd/main.go
+        else
+            # On macOS, build universal binary for amd64 and arm64
+            ARCHS="amd64 arm64"
+            BINS=""
+            for ARCH in $ARCHS; do
+                echo "Building for Darwin/$ARCH..."
+                GOARCH=$ARCH go build -o "${TEMP_DIR}/qcontrollerd-$ARCH" src/qcontrollerd/main.go
+                BINS="${BINS} ${TEMP_DIR}/qcontrollerd-$ARCH"
+            done
+            lipo -create -output "${BIN_DIR}/qcontrollerd" ${BINS}
+        fi
         xattr -d com.apple.quarantine "${BIN_DIR}/qcontrollerd" || true
         chmod 755 "${BIN_DIR}/qcontrollerd"
     else

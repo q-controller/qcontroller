@@ -1,4 +1,4 @@
-.PHONY: clean qcontrollerd generate lint vulncheck update frontend all deb
+.PHONY: clean qcontrollerd debug generate lint vulncheck update frontend all deb
 SHELL := /bin/bash
 
 BUILD_DIR=build
@@ -51,6 +51,9 @@ frontend:
 
 qcontrollerd: frontend generate
 	./build.sh
+
+debug: frontend generate
+	DEBUG=1 ./build.sh
 
 format:
 	gofmt -s -w .
