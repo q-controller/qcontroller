@@ -5,11 +5,27 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Attach to Process",
+            "name": "Attach to service",
             "type": "go",
             "request": "attach",
-            "mode": "local",
-            "processId": 0
+            "mode": "remote",
+            "host": "127.0.0.1",
+            "port": "${input:servicePort}"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "servicePort",
+            "type": "pickString",
+            "description": "Select qcontrollerd service to attach to",
+            "options": [
+                { "label": "eventservice (2345)", "value": "2345" },
+                { "label": "fileregistry (2346)", "value": "2346" },
+                { "label": "qemu (2347)", "value": "2347" },
+                { "label": "orchestrator (2348)", "value": "2348" },
+                { "label": "controller (2349)", "value": "2349" }
+            ],
+            "default": "2349"
         }
     ]
 }
