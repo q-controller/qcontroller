@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 trap cleanup SIGINT SIGTERM ERR EXIT
 
-export LOG_LEVEL=info
+export LOG_LEVEL="${LOG_LEVEL:-info}"
 
 INTERFACE_NAME=br0
 HOST_IP=192.168.71.1/24
@@ -23,6 +23,8 @@ RUNDIR=""
 USE_CERTS="false"
 CERTDIR=""
 USE_AUTH="false"
+USE_DEBUG="false"
+DLV=""
 pids=()
 
 OS_TYPE="$(uname -s)"
@@ -53,6 +55,8 @@ Available options:
                    Set EXTERNAL_URL to the public URL when running behind a
                    reverse proxy or on a non-localhost host. Register
                    <EXTERNAL_URL>/v1/auth/callback as a redirect URI at your IdP.
+--debug            Run services under headless dlv (ports: eventservice 2345,
+                   fileregistry 2346, qemu 2347, orchestrator 2348, controller 2349)
 EOF
     exit
 }
@@ -113,6 +117,9 @@ parse_params() {
             --auth)
                 USE_AUTH="true"
                 ;;
+            --debug)
+                USE_DEBUG="true"
+                ;;
             -?*) die "Unknown option: $1" ;;
             *) break ;;
         esac
@@ -123,6 +130,11 @@ parse_params() {
 
     [[ -z "${RUNDIR-}" ]] && die "Missing required parameter: rundir"
     [[ -z "${QCONTROLLERD-}" ]] && die "Missing required parameter: bin"
+
+    if [[ "${USE_DEBUG}" == "true" ]]; then
+        DLV="$(command -v dlv || true)"
+        [[ -z "${DLV}" ]] && die "--debug requires dlv: go install github.com/go-delve/delve/cmd/dlv@latest"
+    fi
 
     # Calculate registry address from local settings
     if [[ "$OS_TYPE" == "Linux" ]]; then
@@ -351,44 +363,29 @@ cat >${CONFIGDIR}/eventservice-config.json <<EOF
 }
 EOF
 
-touch ${LOGDIR}/eventservice.out
-touch ${LOGDIR}/eventservice.err
-${QCONTROLLERD} eventservice -c ${CONFIGDIR}/eventservice-config.json >${LOGDIR}/eventservice.out 2>${LOGDIR}/eventservice.err &
-pids+=($!)
+launch() {
+    local service=$1 dlv_port=$2 as_root=${3:-}
+    local -a cmd=("${QCONTROLLERD}" "${service}" -c "${CONFIGDIR}/${service}-config.json")
+    if [[ "${USE_DEBUG}" == "true" ]]; then
+        cmd=("${DLV}" exec --headless --continue --accept-multiclient
+             --listen="127.0.0.1:${dlv_port}" --api-version=2 "${cmd[0]}" -- "${cmd[@]:1}")
+        echo "${service}: dlv listening on 127.0.0.1:${dlv_port}"
+    fi
+    if [[ -n "${as_root}" ]]; then
+        sudo -v
+        cmd=(sudo LOG_LEVEL="${LOG_LEVEL}" "${cmd[@]}")
+    fi
+    touch "${LOGDIR}/${service}.out" "${LOGDIR}/${service}.err"
+    "${cmd[@]}" >"${LOGDIR}/${service}.out" 2>"${LOGDIR}/${service}.err" &
+    pids+=($!)
+    sleep 1
+}
 
-# Wait until eventservice is ready
-sleep 1
-
-touch ${LOGDIR}/fileregistry.out
-touch ${LOGDIR}/fileregistry.err
-${QCONTROLLERD} fileregistry -c ${CONFIGDIR}/fileregistry-config.json >${LOGDIR}/fileregistry.out 2>${LOGDIR}/fileregistry.err &
-pids+=($!)
-
-# Wait until fileregistry is ready
-sleep 1
-
-touch ${LOGDIR}/qemu.out
-touch ${LOGDIR}/qemu.err
-sudo -v
-sudo LOG_LEVEL="${LOG_LEVEL}" ${QCONTROLLERD} qemu -c ${CONFIGDIR}/qemu-config.json >${LOGDIR}/qemu.out 2>${LOGDIR}/qemu.err &
-pids+=($!)
-
-# Wait until qemu is ready
-sleep 1
-
-touch ${LOGDIR}/orchestrator.out
-touch ${LOGDIR}/orchestrator.err
-${QCONTROLLERD} orchestrator -c ${CONFIGDIR}/orchestrator-config.json >${LOGDIR}/orchestrator.out 2>${LOGDIR}/orchestrator.err &
-pids+=($!)
-
-# Wait until orchestrator (EventService) is ready
-sleep 1
-
-${QCONTROLLERD} controller -c ${CONFIGDIR}/controller-config.json >${LOGDIR}/controller.out 2>${LOGDIR}/controller.err &
-pids+=($!)
-
-# Wait until controller is ready
-sleep 1
+launch eventservice 2345
+launch fileregistry 2346
+launch qemu 2347 sudo
+launch orchestrator 2348
+launch controller 2349
 
 # Wait for the first one to finish
 while :; do

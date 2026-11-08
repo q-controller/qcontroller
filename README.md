@@ -100,7 +100,7 @@ Running VMs requires `qemu-system-x86_64` or `qemu-system-aarch64` on the host. 
 ./start.sh --rundir /tmp/qcontroller --bin ./build/qcontrollerd
 ```
 
-Run `./start.sh --help` for network and certificate flags (interface, CIDR, DHCP range, macOS network mode, `--certs`, `--auth`).
+Run `./start.sh --help` for network and certificate flags (interface, CIDR, DHCP range, macOS network mode, `--certs`, `--auth`, `--debug`).
 
 Once running, the orchestrator serves:
 - Web UI: `http://localhost:8080/ui/`
@@ -113,6 +113,19 @@ To add remote nodes, add entries to the `nodes` array in the orchestrator config
 For multi-node setups with overlay networking, see:
 - [`setup-nebula.sh`](/setup-nebula.sh): generates a Nebula CA, host certificates, and configs for two nodes
 - [`setup-overlay.sh`](/setup-overlay.sh): adds or removes nftables forwarding rules between the QEMU bridge and the overlay interface
+
+### Debugging
+
+Set `LOG_LEVEL=debug` before running `start.sh` to enable debug logging (written to `<rundir>/logs/<service>.out` and `.err`).
+
+To run all services under headless [Delve](https://github.com/go-delve/delve):
+
+```shell
+make debug
+./start.sh --debug --rundir /tmp/qcontroller --bin ./build/qcontrollerd
+```
+
+Delve listens on `127.0.0.1` at ports `2345` (eventservice), `2346` (fileregistry), `2347` (qemu), `2348` (orchestrator), and `2349` (controller). Connect with `dlv connect 127.0.0.1:<port>` or your editor's remote attach configuration.
 
 ## TLS
 
